@@ -1,6 +1,9 @@
 package sanctuary
 
-import "github.com/Travis-Britz/ps2"
+import (
+	"github.com/Travis-Britz/ps2"
+	"github.com/Travis-Britz/ps2/census"
+)
 
 type FacilityInfo struct {
 	ZoneID         ps2.ZoneID         `json:"zone_id,string"`
@@ -11,7 +14,7 @@ type FacilityInfo struct {
 	LocationY      float64            `json:"location_y,string"`
 	LocationZ      float64            `json:"location_z,string"`
 }
-type MapRegion struct {
-	ps2.MapRegion
+type Region struct {
+	census.Region
 	LocalizedFacilityName ps2.Localization `json:"localized_facility_name"`
 }
