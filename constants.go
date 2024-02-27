@@ -338,3 +338,13 @@ const (
 	EsamirNaniteStorm  MetagameEventID = 254
 	OshurNaniteStorm   MetagameEventID = 255
 )
+
+const (
+	FrontArmor  ArmorFacingID = 0
+	RightArmor  ArmorFacingID = 1
+	TopArmor    ArmorFacingID = 2
+	RearArmor   ArmorFacingID = 3
+	LeftArmor   ArmorFacingID = 4
+	BottomArmor ArmorFacingID = 5
+	AllArmor    ArmorFacingID = 6
+)

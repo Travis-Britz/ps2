@@ -309,6 +309,7 @@ func (l Localization) String() string { return l[DefaultLocale] }
 type ResourceID int
 type ObjectiveGroupID int
 type ArmorInfoID int
+type ArmorFacingID int
 type ImageID int
 type ImageSetID int
 type ImageTypeID int
