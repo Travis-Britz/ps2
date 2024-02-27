@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/Travis-Britz/ps2"
@@ -22,7 +22,7 @@ func GetInstance(id InstanceID) (i Instance, err error) {
 func GetInstanceContext(ctx context.Context, id InstanceID) (i Instance, err error) {
 	i.InstanceID = id
 	url := "https://api.ps2alerts.com/instances/" + id.String()
-	log.Printf("checking: %s", url)
+	slog.Info("ps2alerts query", "url", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return i, err
@@ -51,7 +51,7 @@ func GetActive() (i []Instance, err error) {
 
 func GetActiveContext(ctx context.Context) (i []Instance, err error) {
 	url := "https://api.ps2alerts.com/instances/active"
-	log.Printf("checking: %s", url)
+	slog.Info("ps2alerts query", "url", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
