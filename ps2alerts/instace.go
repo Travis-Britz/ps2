@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Travis-Britz/ps2"
@@ -67,7 +68,7 @@ func (i InstanceID) MarshalJSON() (json []byte, err error) {
 type eventType int
 
 func (t eventType) String() string {
-	// https://github.com/ps2alerts/constants/blob/cfc14bf0429759d3ac1b9800b14fdcc0b550412d/ps2AlertsEventType.ts
+	// https://github.com/ps2alerts/constants/blob/main/ps2AlertsEventType.ts
 	switch t {
 	case 1:
 		return "Live Metagame"
@@ -81,7 +82,7 @@ func (t eventType) String() string {
 type eventState int
 
 func (s eventState) String() string {
-	// https://github.com/ps2alerts/constants/blob/cfc14bf0429759d3ac1b9800b14fdcc0b550412d/ps2AlertsEventState.ts
+	// https://github.com/ps2alerts/constants/blob/main/ps2AlertsEventState.ts
 	switch s {
 	case 0:
 		return "Starting"
@@ -105,7 +106,7 @@ const (
 )
 
 func (b Bracket) String() string {
-	// https://github.com/ps2alerts/constants/blob/cfc14bf0429759d3ac1b9800b14fdcc0b550412d/bracket.ts
+	// https://github.com/ps2alerts/constants/blob/main/bracket.ts
 	switch b {
 	case -1:
 		return "Unknown"
@@ -120,7 +121,7 @@ func (b Bracket) String() string {
 	case prime:
 		return "Prime"
 	default:
-		return "Undefined"
+		return "Undefined-" + strconv.Itoa(int(b))
 	}
 }
 
