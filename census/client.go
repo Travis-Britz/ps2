@@ -5,19 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/Travis-Britz/ps2"
 )
 
+const apiBase = "https://census.daybreakgames.com"
+
 func Namespace(e ps2.Environment) string {
 	switch e {
-	case ps2.EnvPC:
+	case ps2.PC:
 		return "ps2:v2"
-	case ps2.EnvPS4US:
+	case ps2.PS4US:
 		return "ps2ps4us:v2"
-	case ps2.EnvPS4EU:
+	case ps2.PS4EU:
 		return "ps2ps4eu:v2"
 	default:
 		return ""
@@ -33,15 +35,12 @@ type Client struct {
 }
 
 func (c Client) Get(ctx context.Context, env ps2.Environment, query string, result any) error {
-	const apiBase = "https://census.daybreakgames.com"
-
 	url := fmt.Sprintf("%s/s:%s/get/%s/%s", apiBase, c.Key, Namespace(env), query)
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	log.Println("checking:", url)
+	slog.Info("census query", "url", url)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("census.Client.Get: client.Do: %w", err)
