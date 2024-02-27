@@ -2,6 +2,7 @@ package event
 
 import (
 	"bytes"
+	"encoding/binary"
 	"time"
 
 	"github.com/Travis-Britz/ps2"
@@ -11,6 +12,28 @@ type Typer interface {
 	Type() ps2.Event
 }
 
+// UniqueKey is used to uniquely identify an event.
+//
+// This is needed because the planetside event stream can send duplicated events.
+type UniqueKey [25]byte
+
+func makeKey(t time.Time, e ps2.Event, id1 int64, id2 int64) UniqueKey {
+	var k UniqueKey
+	binary.PutVarint(k[0:8], t.Unix())
+	k[8] = byte(e)
+	binary.PutVarint(k[9:17], id1)
+	binary.PutVarint(k[17:25], id2)
+	return k
+}
+
+type UniqueKeyer interface {
+	Key() UniqueKey
+}
+
+type Timestamper interface {
+	Time() time.Time
+}
+
 type Raw struct {
 	AchievementId          ps2.AchievementID        `json:"achievement_id,string"`
 	BattleRank             uint8                    `json:"battle_rank,string"`
@@ -18,10 +41,10 @@ type Raw struct {
 	CharacterLoadoutId     ps2.LoadoutID            `json:"character_loadout_id,string"`
 	IsCritical             stringNumericBool        `json:"is_critical,string"`
 	IsHeadshot             stringNumericBool        `json:"is_headshot,string"`
-	Amount                 int                      `json:"amount"`
+	Amount                 float64                  `json:"amount,string"`
 	ExperienceId           ps2.ExperienceID         `json:"experience_id,string"`
 	LoadoutId              ps2.LoadoutID            `json:"loadout_id,string"`
-	OtherId                int64                    `json:"other_id,string"`
+	OtherId                ps2.EntityID             `json:"other_id,string"`
 	Context                string                   `json:"context"`
 	ItemCount              int                      `json:"item_count,string"`
 	ItemId                 ps2.ItemID               `json:"item_id,string"`
@@ -39,7 +62,7 @@ type Raw struct {
 	VsPopulation           int                      `json:"vs_population,string"`
 	NcPopulation           int                      `json:"nc_population,string"`
 	TrPopulation           int                      `json:"tr_population,string"`
-	EventType              ps2.Event                `json:"event_type"`
+	EventType              ps2.Event                `json:"event_type"` // used by ContinentLock?
 	OldFactionId           ps2.FactionID            `json:"old_faction_id,string"`
 	OutfitId               ps2.OutfitID             `json:"outfit_id,string"`
 	NewFactionId           ps2.FactionID            `json:"new_faction_id,string"`
@@ -63,6 +86,10 @@ type Raw struct {
 // stringNumericBool is a bool value represented as "0" or "1" with json.
 type stringNumericBool bool
 
+type Number interface {
+	int64 | float64
+}
+
 func (b *stringNumericBool) UnmarshalJSON(data []byte) error {
 	data = bytes.Trim(data, "\"")
 	if bytes.Equal(data, []byte("1")) {
@@ -72,6 +99,9 @@ func (b *stringNumericBool) UnmarshalJSON(data []byte) error {
 }
 
 var handlers = map[ps2.Event]func(Raw) Typer{
+	ps2.Unknown: func(r Raw) Typer {
+		return nil
+	},
 	ps2.PlayerLogin: func(r Raw) Typer {
 		return PlayerLogin{
 			CharacterID: r.CharacterId,
@@ -127,7 +157,7 @@ var handlers = map[ps2.Event]func(Raw) Typer{
 			CharacterID:         r.CharacterId,
 			CharacterLoadoutID:  r.CharacterLoadoutId,
 			TeamID:              r.TeamId,
-			IsCritical:          false,
+			IsCritical:          bool(r.IsCritical),
 			IsHeadshot:          bool(r.IsHeadshot),
 			Timestamp:           time.Unix(r.Timestamp, 0).UTC(),
 			VehicleID:           r.VehicleId,
@@ -233,23 +263,13 @@ var handlers = map[ps2.Event]func(Raw) Typer{
 			MetagameEventID:   r.MetagameEventId,
 		}
 	},
-	ps2.ContinentUnlock: func(r Raw) Typer {
-		return ContinentUnlock{
-			Timestamp:         time.Unix(r.Timestamp, 0).UTC(),
-			WorldID:           r.WorldId,
-			ZoneID:            r.ZoneId,
-			TriggeringFaction: r.TriggeringFaction,
-			PreviousFaction:   r.PreviousFaction,
-			PopulationVS:      r.VsPopulation,
-			PopulationNC:      r.NcPopulation,
-			PopulationTR:      r.TrPopulation,
-			MetagameEventID:   r.MetagameEventId,
-		}
-	},
 }
 
 func (r Raw) Event() Typer {
-	h := handlers[r.EventType]
+	h := handlers[r.EventName]
+	if h == nil {
+		panic("nil handler returned for type " + r.EventName.String())
+	}
 	return h(r)
 }
 
@@ -266,26 +286,21 @@ type ContinentLock struct {
 	MetagameEventID ps2.MetagameEventID
 }
 
-func (ContinentLock) Type() ps2.Event { return ps2.ContinentLock }
-
-type ContinentUnlock struct {
-	Timestamp         time.Time
-	WorldID           ps2.WorldID
-	ZoneID            ps2.ZoneInstanceID
-	TriggeringFaction ps2.FactionID
-	PreviousFaction   ps2.FactionID
-	PopulationVS      int
-	PopulationNC      int
-	PopulationTR      int
-	MetagameEventID   ps2.MetagameEventID
+func (ContinentLock) Type() ps2.Event   { return ps2.ContinentLock }
+func (e ContinentLock) Time() time.Time { return e.Timestamp }
+func (e ContinentLock) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.WorldID), int64(e.ZoneID))
 }
-
-func (ContinentUnlock) Type() ps2.Event { return ps2.ContinentUnlock }
 
 type PlayerLogin struct {
 	CharacterID ps2.CharacterID
 	Timestamp   time.Time
 	WorldID     ps2.WorldID
+}
+
+func (e PlayerLogin) Time() time.Time { return e.Timestamp }
+func (e PlayerLogin) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0)
 }
 
 func (PlayerLogin) Type() ps2.Event { return ps2.PlayerLogin }
@@ -296,21 +311,31 @@ type PlayerLogout struct {
 	WorldID     ps2.WorldID
 }
 
-func (PlayerLogout) Type() ps2.Event { return ps2.PlayerLogout }
+func (PlayerLogout) Type() ps2.Event   { return ps2.PlayerLogout }
+func (e PlayerLogout) Time() time.Time { return e.Timestamp }
+func (e PlayerLogout) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0)
+}
 
 type GainExperience struct {
-	Amount       int
+	Amount       float64
 	CharacterID  ps2.CharacterID
 	ExperienceID ps2.ExperienceID
 	LoadoutID    ps2.LoadoutID
-	OtherID      int64 // player id, vehicle id, etc.
+	OtherID      ps2.EntityID
 	Timestamp    time.Time
 	WorldID      ps2.WorldID
 	ZoneID       ps2.ZoneInstanceID
 	TeamID       ps2.FactionID
 }
 
-func (GainExperience) Type() ps2.Event { return ps2.GainExperience }
+func (GainExperience) Type() ps2.Event   { return ps2.GainExperience }
+func (e GainExperience) Time() time.Time { return e.Timestamp }
+func (e GainExperience) Key() UniqueKey {
+	// devs have claimed a player can't have the same experience ID twice in the same second,
+	// unless there are weird edge cases that haven't been considered
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.ExperienceID))
+}
 
 type VehicleDestroy struct {
 	AttackerCharacterID ps2.CharacterID
@@ -328,7 +353,16 @@ type VehicleDestroy struct {
 	ZoneID              ps2.ZoneInstanceID
 }
 
-func (VehicleDestroy) Type() ps2.Event { return ps2.VehicleDestroy }
+func (VehicleDestroy) Type() ps2.Event   { return ps2.VehicleDestroy }
+func (e VehicleDestroy) Time() time.Time { return e.Timestamp }
+func (e VehicleDestroy) Key() UniqueKey {
+	// an attacker could destroy two vehicles in the same second,
+	// so we make the event unique on the character that lost the vehicle.
+	// I don't think a player can own two vehicles at the same time?
+	// I'm not sure who the owner ID is for abandoned vehicles.
+	// TODO: get ingame and check who owns a destroyed abandoned vehicle.
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.VehicleID))
+}
 
 type Death struct {
 	AttackerCharacterID ps2.CharacterID
@@ -352,6 +386,8 @@ func (e Death) IsSuicide() bool       { return e.AttackerCharacterID == e.Charac
 func (e Death) IsRoadkill() bool      { return e.AttackerVehicleID != 0 && e.AttackerWeaponID == 0 }
 func (e Death) IsNaturalCauses() bool { return e.AttackerCharacterID == 0 }
 func (Death) Type() ps2.Event         { return ps2.Death }
+func (e Death) Time() time.Time       { return e.Timestamp }
+func (e Death) Key() UniqueKey        { return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0) }
 
 // AchievementEarned represents weapon medals or service ribbons.
 type AchievementEarned struct {
@@ -362,7 +398,11 @@ type AchievementEarned struct {
 	ZoneID        ps2.ZoneInstanceID
 }
 
-func (AchievementEarned) Type() ps2.Event { return ps2.AchievementEarned }
+func (AchievementEarned) Type() ps2.Event   { return ps2.AchievementEarned }
+func (e AchievementEarned) Time() time.Time { return e.Timestamp }
+func (e AchievementEarned) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.AchievementID))
+}
 
 type BattleRankUp struct {
 	CharacterID ps2.CharacterID
@@ -372,7 +412,11 @@ type BattleRankUp struct {
 	ZoneID      ps2.ZoneInstanceID
 }
 
-func (BattleRankUp) Type() ps2.Event { return ps2.BattleRankUp }
+func (BattleRankUp) Type() ps2.Event   { return ps2.BattleRankUp }
+func (e BattleRankUp) Time() time.Time { return e.Timestamp }
+func (e BattleRankUp) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.BattleRank))
+}
 
 type ItemAdded struct {
 	CharacterID ps2.CharacterID
@@ -384,7 +428,11 @@ type ItemAdded struct {
 	ZoneID      ps2.ZoneInstanceID
 }
 
-func (ItemAdded) Type() ps2.Event { return ps2.ItemAdded }
+func (ItemAdded) Type() ps2.Event   { return ps2.ItemAdded }
+func (e ItemAdded) Time() time.Time { return e.Timestamp }
+func (e ItemAdded) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.ItemID))
+}
 
 type MetagameEvent struct {
 	ExperienceBonus        float64
@@ -404,7 +452,11 @@ func (me MetagameEvent) EventInstanceID() ps2.MetagameEventInstanceID {
 	return ps2.MetagameEventInstanceID{WorldID: me.WorldID, InstanceID: me.InstanceID}
 }
 
-func (MetagameEvent) Type() ps2.Event { return ps2.Metagame }
+func (MetagameEvent) Type() ps2.Event   { return ps2.Metagame }
+func (e MetagameEvent) Time() time.Time { return e.Timestamp }
+func (e MetagameEvent) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.WorldID), int64(e.InstanceID))
+}
 
 type FacilityControl struct {
 	DurationHeld time.Duration
@@ -419,6 +471,11 @@ type FacilityControl struct {
 
 func (FacilityControl) Type() ps2.Event { return ps2.FacilityControl }
 
+func (e FacilityControl) Time() time.Time { return e.Timestamp }
+func (e FacilityControl) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.ZoneID), int64(e.FacilityID))
+}
+
 type PlayerFacilityCapture struct {
 	CharacterID ps2.CharacterID
 	FacilityID  ps2.FacilityID
@@ -431,7 +488,11 @@ type PlayerFacilityCapture struct {
 	ZoneID    ps2.ZoneInstanceID
 }
 
-func (PlayerFacilityCapture) Type() ps2.Event { return ps2.PlayerFacilityCapture }
+func (PlayerFacilityCapture) Type() ps2.Event   { return ps2.PlayerFacilityCapture }
+func (e PlayerFacilityCapture) Time() time.Time { return e.Timestamp }
+func (e PlayerFacilityCapture) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.FacilityID))
+}
 
 type PlayerFacilityDefend struct {
 	CharacterID ps2.CharacterID
@@ -445,7 +506,11 @@ type PlayerFacilityDefend struct {
 	ZoneID    ps2.ZoneInstanceID
 }
 
-func (PlayerFacilityDefend) Type() ps2.Event { return ps2.PlayerFacilityDefend }
+func (PlayerFacilityDefend) Type() ps2.Event   { return ps2.PlayerFacilityDefend }
+func (e PlayerFacilityDefend) Time() time.Time { return e.Timestamp }
+func (e PlayerFacilityDefend) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.FacilityID))
+}
 
 type SkillAdded struct {
 	CharacterID ps2.CharacterID
@@ -455,4 +520,8 @@ type SkillAdded struct {
 	ZoneID      ps2.ZoneInstanceID
 }
 
-func (SkillAdded) Type() ps2.Event { return ps2.SkillAdded }
+func (SkillAdded) Type() ps2.Event   { return ps2.SkillAdded }
+func (e SkillAdded) Time() time.Time { return e.Timestamp }
+func (e SkillAdded) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.SkillID))
+}

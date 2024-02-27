@@ -6,7 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
+	"net/url"
+	"sync"
+	"time"
 
 	"github.com/Travis-Britz/ps2"
 	"github.com/Travis-Britz/ps2/event"
@@ -15,16 +20,19 @@ import (
 
 func New(serviceID string, env ps2.Environment) *Client {
 	c := &Client{
-		serviceID: serviceID,
-		env:       env,
+		messageLogger: &noopMessageLogger{},
+		serviceID:     serviceID,
+		env:           env,
 	}
 	return c
 }
 
 type Client struct {
 	conn                          *websocket.Conn
+	messageLogger                 messageLogger
 	serviceID                     string
 	env                           ps2.Environment
+	serviceURL                    string
 	err                           chan error
 	connectHandler                func()
 	playerLoginHandlers           []func(event.PlayerLogin)
@@ -41,20 +49,49 @@ type Client struct {
 	playerFacilityDefendHandlers  []func(event.PlayerFacilityDefend)
 	skillAddedHandlers            []func(event.SkillAdded)
 	continentLockHandlers         []func(event.ContinentLock)
-	continentUnlockHandlers       []func(event.ContinentUnlock)
 }
 
+// SetMessageLogger sets a logger to track all sent and received websocket messages.
+// This may be useful for debugging purposes or to generate replayable event streams for testing.
+// Messages will be given to the logger before unmarshaling (for received messages).
+// Given byte slices MUST NOT be modified in any way.
+func (c *Client) SetMessageLogger(l messageLogger) {
+	c.messageLogger = l
+}
+
+// SetURL allows overriding the default url for the event streaming service.
+//
+// This is useful if you would like to use a service like https://nanite-systems.net/ instead,
+// which wraps the official Census event streaming API.
+//
+// Note that the provided serviceID and env in the constructor will be ignored when using SetURL.
+func (c *Client) SetURL(url string) {
+	c.serviceURL = url
+}
+
+// Run will connect and run the websocket client,
+// blocking until ctx is cancelled or a connection error occurs.
+//
+// The returned error will be nil if the given context was cancelled or the deadline exceeded.
+// Use [wsc.WithRetry] to reconnect on error.
 func (c *Client) Run(ctx context.Context) error {
 	ctx, shutdown := context.WithCancel(ctx)
 	defer shutdown()
 	url := c.url()
-	c.debug("dialing: %v", url)
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, c.url(), nil)
+	slog.Info("dialing event service", "url", url)
+
+	dialer := websocket.Dialer{
+		// Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 10 * time.Second,
+	}
+	conn, _, err := dialer.DialContext(ctx, url, nil)
+	// conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("wsc.Client.Run: unable to connect: %w", err)
 	}
 	defer conn.Close()
 	c.conn = conn
+	slog.Info("connected to event service")
 	if c.connectHandler != nil {
 		c.connectHandler()
 	}
@@ -68,7 +105,7 @@ func (c *Client) Run(ctx context.Context) error {
 		err = ctx.Err()
 	case err = <-c.err:
 	}
-	if errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil
 	}
 	return err
@@ -77,11 +114,13 @@ func (c *Client) Run(ctx context.Context) error {
 func (c *Client) Send(cs commander) {
 	b, err := json.Marshal(cs.command())
 	if err != nil {
-		log.Printf("send: %v", err)
+		slog.Error("error marshaling command to JSON", "error", err, "command", cs)
 		return
 	}
+	c.messageLogger.Sent(b)
 	if err := c.conn.WriteMessage(websocket.TextMessage, b); err != nil {
-		c.exit(fmt.Errorf("write: %w", err))
+		c.exit(fmt.Errorf("write error: %w", err))
+		return
 	}
 }
 
@@ -90,21 +129,24 @@ func (c *Client) read(ctx context.Context, messages chan<- rawMessage) {
 	var message []byte
 	var err error
 	var m rawMessage
+	messageLogger := c.messageLogger
 	for {
 		_, message, err = c.conn.ReadMessage()
 		if err != nil {
 			c.exit(fmt.Errorf("read: %w", err))
 			break
 		}
+		messageLogger.Received(message)
 		err = json.Unmarshal(message, &m)
 		if err != nil {
-			c.debug("decode error: %v; raw message: %s", err, message)
+			slog.Error("decoding JSON failed", "error", err, "raw", string(message))
 			continue
 		}
 		messages <- m
 	}
 }
 
+// SetConnectHandler sets a function h to be called upon connect success.
 func (c *Client) SetConnectHandler(h func()) {
 	c.connectHandler = h
 }
@@ -136,19 +178,24 @@ func (c *Client) AddHandler(h any) {
 	case func(event.PlayerFacilityDefend):
 		c.playerFacilityDefendHandlers = append(c.playerFacilityDefendHandlers, v)
 	case func(event.SkillAdded):
-		c.skillAddedHandlers = append(c.skillAddedHandlers)
+		c.skillAddedHandlers = append(c.skillAddedHandlers, v)
 	case func(event.ContinentLock):
 		c.continentLockHandlers = append(c.continentLockHandlers, v)
-	case func(event.ContinentUnlock):
-		c.continentUnlockHandlers = append(c.continentUnlockHandlers, v)
 	default:
 		panic(fmt.Sprintf("AddHandler: invalid type '%T'", h))
 	}
 }
 
 func (c *Client) handle(ctx context.Context, messages <-chan rawMessage) {
+	// dedup := make(deduplicator, 0, 10000)
 	for m := range messages {
 		e := m.message()
+		// if ee, ok := e.(uniqueTimestampedEvent); ok {
+		// 	if !dedup.InsertFresh(ee) {
+		// 		slog.Debug("duplicate event dropped", "event", e)
+		// 		continue
+		// 	}
+		// }
 		switch v := e.(type) {
 		case event.PlayerLogin:
 			for _, h := range c.playerLoginHandlers {
@@ -206,16 +253,15 @@ func (c *Client) handle(ctx context.Context, messages <-chan rawMessage) {
 			for _, h := range c.continentLockHandlers {
 				h(v)
 			}
-		case event.ContinentUnlock:
-			for _, h := range c.continentUnlockHandlers {
-				h(v)
-			}
 		}
 	}
 }
 
-func (cc *Client) url() string {
-	return fmt.Sprintf("wss://push.planetside2.com/streaming?environment=%s&service-id=s:%s", cc.env, cc.serviceID)
+func (c *Client) url() string {
+	if c.serviceURL != "" {
+		return c.serviceURL
+	}
+	return fmt.Sprintf("wss://push.planetside2.com/streaming?environment=%s&service-id=s:%s", c.env, url.QueryEscape(c.serviceID))
 }
 
 func (c *Client) debug(fmt string, v ...any) {
@@ -228,4 +274,35 @@ func (c *Client) exit(err error) {
 	case c.err <- err:
 	default:
 	}
+}
+
+type messageLogger interface {
+	Sent([]byte)
+	Received([]byte)
+}
+
+// noopMessageLogger performs no op.
+type noopMessageLogger struct{}
+
+func (noopMessageLogger) Sent([]byte)     {}
+func (noopMessageLogger) Received([]byte) {}
+
+type MessageLogger struct {
+	R  io.Writer
+	S  io.Writer
+	mu sync.Mutex
+
+	SentPrefix     string
+	ReceivedPrefix string
+}
+
+func (l *MessageLogger) Sent(b []byte) {
+	l.mu.Lock()
+	fmt.Fprintln(l.S, l.SentPrefix+string(b))
+	l.mu.Unlock()
+}
+func (l *MessageLogger) Received(b []byte) {
+	l.mu.Lock()
+	fmt.Fprintln(l.R, l.ReceivedPrefix+string(b))
+	l.mu.Unlock()
 }
