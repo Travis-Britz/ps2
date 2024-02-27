@@ -38,7 +38,8 @@ type MetagameEventStateID int
 // they could never actually go negative.
 type CharacterID uint64
 
-func (c CharacterID) String() string { return strconv.FormatUint(uint64(c), 10) }
+func (id CharacterID) String() string   { return strconv.FormatUint(uint64(id), 10) }
+func (id CharacterID) GoString() string { return strconv.FormatUint(uint64(id), 10) }
 
 // NPCID is a non-globally unique NPC ID such as a spawned sunderer, construction object, beacon, and many other game objects.
 // An ID is unique as long as the object is alive,
@@ -47,9 +48,13 @@ func (c CharacterID) String() string { return strconv.FormatUint(uint64(c), 10) 
 // The rules or categories are unknown and may not be useful.
 type NPCID uint64
 
+func (id NPCID) GoString() string { return strconv.FormatUint(uint64(id), 10) }
+
 // EntityID represents a game entity: either a CharacterID or NPCID.
 // This type is used primarily for GainExperience events from the Planetside 2 event streaming API in the "other_id" field.
 type EntityID uint64
+
+func (id EntityID) GoString() string { return strconv.FormatUint(uint64(id), 10) }
 
 // ID returns either a CharacterID or NPCID if set is true, and nil if set is false.
 // The result must be type checked.
