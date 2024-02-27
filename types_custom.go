@@ -3,32 +3,37 @@ package ps2
 import (
 	"bytes"
 	"fmt"
-	"time"
 )
 
+// Environment represents a game server production environment.
+//
+// Values are PC, Playstation 4 (US), and Playstation 4 (EU).
+// The default is PC for newly initialized structs.
 type Environment uint8
 
 func (e Environment) String() string {
 	switch e {
-	case EnvPC:
+	case PC:
 		return "ps2"
-	case EnvPS4US:
+	case PS4US:
 		return "ps2ps4us"
-	case EnvPS4EU:
+	case PS4EU:
 		return "ps2ps4eu"
 	default:
 		return ""
 	}
 }
 
-func GetEnvironment(w WorldID) Environment {
-	switch w {
-	case Ceres, Lithcorp, Rashnu:
-		return EnvPS4EU
-	case Genudine, Palos, Crux, Searhus, Xelas:
-		return EnvPS4US
+func (e Environment) GoString() string {
+	switch e {
+	case PC:
+		return "PC"
+	case PS4US:
+		return "PS4US"
+	case PS4EU:
+		return "PS4EU"
 	default:
-		return EnvPC
+		return fmt.Sprintf("Environment(%d)", int(e))
 	}
 }
 
@@ -37,7 +42,6 @@ type Event uint8
 const (
 	Unknown Event = iota
 	ContinentLock
-	ContinentUnlock
 	PlayerLogin
 	PlayerLogout
 	GainExperience
@@ -54,8 +58,8 @@ const (
 )
 
 var events = map[Event]string{
+	// Unknown:               "Unknown",
 	ContinentLock:         "ContinentLock",
-	ContinentUnlock:       "ContinentUnlock",
 	PlayerLogin:           "PlayerLogin",
 	PlayerLogout:          "PlayerLogout",
 	GainExperience:        "GainExperience",
@@ -83,39 +87,9 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("event.UnmarshalJSON: invalid value '%s' for event", data)
+	return fmt.Errorf("event.UnmarshalJSON: invalid value %q for event", data)
 }
 
 func (e Event) MarshalJSON() ([]byte, error) {
 	return []byte("\"" + e.String() + "\""), nil
-}
-
-type MetagameEventCategory uint
-
-var categoryData = map[MetagameEventCategory]struct {
-	duration        time.Duration
-	isTerritory     bool
-	isContinentLock bool
-}{
-	Meltdown:           {90 * time.Minute, true, true},
-	UnstableMeltdown:   {45 * time.Minute, true, true},
-	KoltyrMeltdown:     {45 * time.Minute, true, true},
-	MaximumPressure:    {30 * time.Minute, false, false},
-	SuddenDeath:        {15 * time.Minute, false, true},
-	AerialAnomalies:    {30 * time.Minute, false, false},
-	OutfitwarsPreMatch: {20 * time.Minute, false, false},
-	OutfitwarsMatch:    {45 * time.Minute, false, false},
-	HauntedBastion:     {15 * time.Minute, false, false},
-}
-
-func (ec MetagameEventCategory) Duration() time.Duration {
-	return categoryData[ec].duration
-}
-
-func (ec MetagameEventCategory) IsTerritory() bool {
-	return categoryData[ec].isTerritory
-}
-
-func (ec MetagameEventCategory) IsContinentLock() bool {
-	return categoryData[ec].isContinentLock
 }
