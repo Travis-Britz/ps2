@@ -1,6 +1,8 @@
 package ps2
 
 import (
+	"bytes"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -266,17 +268,80 @@ type ItemTypeID int
 
 type ItemCategoryID int
 
-// InstanceID represents the metagame instance counter for a world.
+// InstanceID is an incrementing ID counter for a metagame event,
+// and is unique within a world.
 type InstanceID uint32
 
 // MetagameEventInstanceID represents a unique metagame event.
+//
+// https://census.daybreakgames.com/get/ps2:v2/world_event?type=METAGAME
 type MetagameEventInstanceID struct {
 	WorldID
 	InstanceID
 }
+
+func (i MetagameEventInstanceID) String() string {
+	return fmt.Sprintf("%d-%d", i.WorldID, i.InstanceID)
+}
+func (i *MetagameEventInstanceID) UnmarshalJSON(b []byte) (err error) {
+	b = bytes.Trim(b, "\"")
+	*i, err = parseInstance(b)
+	if err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+	return nil
+}
+
+func (i *MetagameEventInstanceID) Scan(src any) (err error) {
+	var v []byte
+	switch src.(type) {
+	case string:
+		v = []byte(src.(string))
+	case []byte:
+		v = src.([]byte)
+	default:
+		return fmt.Errorf("Scan: unhandled type '%T'", src)
+	}
+	if *i, err = parseInstance([]byte(v)); err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+	return nil
+}
+func parseInstance(b []byte) (i MetagameEventInstanceID, err error) {
+	world, instance, found := bytes.Cut(b, []byte("-"))
+	if !found {
+		return i, fmt.Errorf("missing separator in instance id '%s'", b)
+	}
+	var worldid WorldID
+	if err := json.Unmarshal(world, &worldid); err != nil {
+		return i, fmt.Errorf("error unmarshaling world: %w", err)
+	}
+	var instanceid InstanceID
+	if err := json.Unmarshal(instance, &instanceid); err != nil {
+		return i, fmt.Errorf("error unmarshaling instance: %w", err)
+	}
+	i.WorldID = worldid
+	i.InstanceID = instanceid
+	return i, nil
+}
+func (i MetagameEventInstanceID) Value() (driver.Value, error) {
+	return i.String(), nil
+}
+func (i MetagameEventInstanceID) MarshalJSON() (json []byte, err error) {
+	json = append(json, '"')
+	json = append(json, i.String()...)
+	json = append(json, '"')
+	return json, nil
+}
+
+// MetagameEventID represents type type of event,
+// such as Amerish Liberation, Indar Aerial Anomalies, Amerish Forgotten Fleet Carrier, etc.
 type MetagameEventID int
 
-// MetagameEventType seems to be the win condition
+// MetagameEventType seems to be the win condition or scoring mechanism.
+// It is not directly useful most of the time,
+// but might be useful as a fallback for checking the alert type if new metagame events are added.
+// Known types are listed in constants.go.
 type MetagameEventType int
 
 type MapHexType uint8

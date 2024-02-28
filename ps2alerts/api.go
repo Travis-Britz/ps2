@@ -12,14 +12,14 @@ import (
 )
 
 func Get(w ps2.WorldID, i ps2.InstanceID) (instance Instance, err error) {
-	return GetInstance(InstanceID{w, i})
+	return GetInstance(ps2.MetagameEventInstanceID{WorldID: w, InstanceID: i})
 }
 
-func GetInstance(id InstanceID) (i Instance, err error) {
+func GetInstance(id ps2.MetagameEventInstanceID) (i Instance, err error) {
 	return GetInstanceContext(context.Background(), id)
 }
 
-func GetInstanceContext(ctx context.Context, id InstanceID) (i Instance, err error) {
+func GetInstanceContext(ctx context.Context, id ps2.MetagameEventInstanceID) (i Instance, err error) {
 	i.InstanceID = id
 	url := "https://api.ps2alerts.com/instances/" + id.String()
 	slog.Info("ps2alerts query", "url", url)

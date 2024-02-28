@@ -1,8 +1,6 @@
 package ps2alerts
 
 import (
-	"bytes"
-	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -10,60 +8,6 @@ import (
 
 	"github.com/Travis-Britz/ps2"
 )
-
-type InstanceID ps2.MetagameEventInstanceID
-
-func (i InstanceID) String() string { return fmt.Sprintf("%d-%d", i.WorldID, i.InstanceID) }
-func (i *InstanceID) UnmarshalJSON(b []byte) (err error) {
-	b = bytes.Trim(b, "\"")
-	*i, err = parseInstance(b)
-	if err != nil {
-		return fmt.Errorf("ps2alerts.Instance.UnmarshalJSON: %w", err)
-	}
-	return nil
-}
-
-func (i *InstanceID) Scan(src any) (err error) {
-	var v []byte
-	switch src.(type) {
-	case string:
-		v = []byte(src.(string))
-	case []byte:
-		v = src.([]byte)
-	default:
-		return fmt.Errorf("ps2alerts.Instance.Scan: unhandled type '%T'", src)
-	}
-	if *i, err = parseInstance([]byte(v)); err != nil {
-		return fmt.Errorf("ps2alerts.Instance.Scan: %w", err)
-	}
-	return nil
-}
-func parseInstance(b []byte) (i InstanceID, err error) {
-	world, instance, found := bytes.Cut(b, []byte("-"))
-	if !found {
-		return i, fmt.Errorf("missing separator in instance id '%s'", b)
-	}
-	var worldid ps2.WorldID
-	if err := json.Unmarshal(world, &worldid); err != nil {
-		return i, fmt.Errorf("error unmarshaling world: %w", err)
-	}
-	var instanceid ps2.InstanceID
-	if err := json.Unmarshal(instance, &instanceid); err != nil {
-		return i, fmt.Errorf("error unmarshaling instance: %w", err)
-	}
-	i.WorldID = worldid
-	i.InstanceID = instanceid
-	return i, nil
-}
-func (i InstanceID) Value() (driver.Value, error) {
-	return i.String(), nil
-}
-func (i InstanceID) MarshalJSON() (json []byte, err error) {
-	json = append(json, '"')
-	json = append(json, i.String()...)
-	json = append(json, '"')
-	return json, nil
-}
 
 type eventType int
 
@@ -142,19 +86,19 @@ func (b Bracket) Min() int {
 }
 
 type Instance struct {
-	ID                      string              `json:"_id"`
-	World                   ps2.WorldID         `json:"world"`
-	CensusInstanceID        ps2.InstanceID      `json:"censusInstanceId"`
-	InstanceID              InstanceID          `json:"instanceId"`
-	Zone                    ps2.ZoneInstanceID  `json:"zone"`
-	TimeStarted             time.Time           `json:"timeStarted"`
-	TimeEnded               *time.Time          `json:"timeEnded"`
-	CensusMetagameEventType ps2.MetagameEventID `json:"censusMetagameEventType"`
-	Duration                duration            `json:"duration"`
-	State                   eventState          `json:"state"`
-	Ps2AlertsEventType      eventType           `json:"ps2AlertsEventType"`
-	Bracket                 Bracket             `json:"bracket"`
-	MapVersion              string              `json:"mapVersion"`
+	ID                      string                      `json:"_id"`
+	World                   ps2.WorldID                 `json:"world"`
+	CensusInstanceID        ps2.InstanceID              `json:"censusInstanceId"`
+	InstanceID              ps2.MetagameEventInstanceID `json:"instanceId"`
+	Zone                    ps2.ZoneInstanceID          `json:"zone"`
+	TimeStarted             time.Time                   `json:"timeStarted"`
+	TimeEnded               *time.Time                  `json:"timeEnded"`
+	CensusMetagameEventType ps2.MetagameEventID         `json:"censusMetagameEventType"`
+	Duration                duration                    `json:"duration"`
+	State                   eventState                  `json:"state"`
+	Ps2AlertsEventType      eventType                   `json:"ps2AlertsEventType"`
+	Bracket                 Bracket                     `json:"bracket"`
+	MapVersion              string                      `json:"mapVersion"`
 	Result                  struct {
 		Vs                int            `json:"vs"`
 		Nc                int            `json:"nc"`
