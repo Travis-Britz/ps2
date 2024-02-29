@@ -646,6 +646,7 @@ func (question managerQuery[T]) Do(manager *Manager) {
 	select {
 	case question.result <- question.query(manager):
 	default:
+		slog.Debug("dropped manager query result; result channel should be buffered")
 	}
 
 }
