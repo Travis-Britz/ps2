@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/Travis-Britz/ps2"
 	"github.com/Travis-Britz/ps2/census"
@@ -137,8 +139,19 @@ func main() {
 	}
 }
 
+var lastMessage time.Time
+
 func display(m any) {
-	log.Printf("%#v\n", m)
+	type timestamper interface {
+		Time() time.Time
+	}
+	if message, ok := m.(timestamper); ok {
+		if message.Time().Before(lastMessage) {
+			slog.Debug("time travel message", "last", lastMessage, "message", m)
+		}
+		lastMessage = message.Time()
+	}
+	// log.Printf("%#v\n", m)
 	// b, err := json.Marshal(m)
 	// if err != nil {
 	// 	return
