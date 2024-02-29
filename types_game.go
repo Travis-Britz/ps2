@@ -256,7 +256,7 @@ func (id ZoneInstanceID) DefinitionID() any {
 
 func (id ZoneInstanceID) GoString() string {
 	if id.IsInstanced() {
-		return fmt.Sprintf("ps2.ZoneInstanceID(%d<<16|ps2.GeometryID(%d))", id.Instance(), id.DefinitionID())
+		return fmt.Sprintf("ps2.ZoneInstanceID(%d<<16|uint32(ps2.GeometryID(%d)))", id.Instance(), id.DefinitionID())
 	}
 	return fmt.Sprintf("ps2.ZoneInstanceID(%s)", id.ZoneID().GoString())
 }
