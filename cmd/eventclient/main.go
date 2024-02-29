@@ -74,6 +74,7 @@ func run() (err error) {
 	case config.PlanetsideWorldID != 0:
 		subscribe.AddWorld(config.PlanetsideWorldID)
 		subscribe.AllCharacters()
+		subscribe.LogicalAndCharactersWithWorlds = true
 	default:
 		subscribe.AllCharacters()
 		subscribe.AllWorlds()
