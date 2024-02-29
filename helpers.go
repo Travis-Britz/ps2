@@ -20,6 +20,22 @@ func InfantryType(l LoadoutID) ProfileTypeID {
 	}
 }
 
+// LoadoutFaction returns the FactionID mapping a given LoadoutID
+func LoadoutFaction(l LoadoutID) FactionID {
+	switch l {
+	case EngineerNC, HeavyAssaultNC, InfiltratorNC, LightAssaultNC, MaxNC, MedicNC:
+		return NC
+	case EngineerVS, HeavyAssaultVS, InfiltratorVS, LightAssaultVS, MaxVS, MedicVS:
+		return VS
+	case EngineerTR, HeavyAssaultTR, InfiltratorTR, LightAssaultTR, MaxTR, MedicTR:
+		return TR
+	case EngineerNSO, HeavyAssaultNSO, InfiltratorNSO, LightAssaultNSO, MaxNSO, MedicNSO:
+		return NSO
+	default:
+		return 0
+	}
+}
+
 // IsPermanentZone returns true for zones that are shown on the world map at all times.
 func IsPermanentZone(z ContinentID) bool {
 	switch z {
