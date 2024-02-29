@@ -38,69 +38,46 @@ type ps2db interface {
 
 func New(db ps2db, censusClient *census.Client) *Manager {
 	m := &Manager{
-		worlds:                  make(map[ps2.WorldID]*worldStatus),
-		activeMetagameEvents:    make(map[ps2.MetagameEventInstanceID]eventInstance),
+		// worlds:               make(map[ps2.WorldID]*worldStatus),
+		// activeMetagameEvents: make(map[ps2.MetagameEventInstanceID]eventInstance),
+		newActiveMetagameEventsRenameThisAndDeleteTheOldOne: make(map[ps2.MetagameEventInstanceID]*EventState),
 		ps2alerts:               make(chan ps2alerts.Instance),
 		onlinePlayers:           make(map[ps2.CharacterID]trackedPlayer),
 		censusPushEvents:        make(chan event.Typer, 1000),
 		mapUpdates:              make(chan census.ZoneState, 10),
-		zoneLookups:             make(map[serverZone]time.Time),
+		zoneLookups:             make(map[uniqueZone]time.Time),
 		characterFactionResults: make(chan characterFaction, 100),
 		collections:             db,
 		censusClient:            censusClient,
 	}
-	for _, w := range db.ListWorlds() {
-		m.worlds[w.WorldID] = newWorldManager(w, db.ListContinents())
+
+	// initialize state for all static zones on all worlds
+	for _, world := range db.ListWorlds() {
+		for _, cont := range db.ListContinents() {
+			m.newGlobalStateRenameThis.trackZone(world, ps2.ZoneInstanceID(cont.ContinentID), cont)
+		}
 	}
+
 	return m
-}
-
-type trackedPlayer struct {
-	// homeFaction needs to be populated by looking up character IDs on the census api
-	// it's used for world population tracking, where NSO don't have a team assigned.
-	homeFaction ps2.FactionID
-
-	// team is the current faction as determined by incoming kill events
-	team     ps2.FactionID
-	world    ps2.WorldID
-	zone     ps2.ZoneInstanceID
-	lastSeen time.Time
-}
-
-// serverZone uniqely identifies a game zone by its world and zone instance.
-type serverZone struct {
-	ps2.WorldID
-	ps2.ZoneInstanceID
-}
-
-// popCounter maintains a faction population counter, where the index is a ps2.FactionID.
-type popCounter [5]int
-
-func (pc popCounter) Sum(factions ...ps2.FactionID) (sum int) {
-	if len(factions) == 0 {
-		factions = []ps2.FactionID{None, VS, NC, TR, NSO}
-	}
-	for _, f := range factions {
-		sum += pc[f]
-	}
-	return sum
 }
 
 // Manager maintains knowledge of worlds, zones, events, and population.
 // It starts workers to keep itself updated.
 type Manager struct {
-	mu                      sync.Mutex
-	collections             ps2db
-	censusClient            *census.Client
-	worlds                  map[ps2.WorldID]*worldStatus
-	activeMetagameEvents    map[ps2.MetagameEventInstanceID]eventInstance
-	onlinePlayers           map[ps2.CharacterID]trackedPlayer
-	ps2alerts               chan ps2alerts.Instance
-	mapUpdates              chan census.ZoneState
-	censusPushEvents        chan event.Typer
-	eventUpdates            chan eventInstance
+	mu           sync.Mutex
+	collections  ps2db
+	censusClient *census.Client
+	// activeMetagameEvents                                map[ps2.MetagameEventInstanceID]eventInstance
+	newActiveMetagameEventsRenameThisAndDeleteTheOldOne map[ps2.MetagameEventInstanceID]*EventState
+	newGlobalStateRenameThis                            GlobalState
+	onlinePlayers                                       map[ps2.CharacterID]trackedPlayer
+	ps2alerts                                           chan ps2alerts.Instance
+	mapUpdates                                          chan census.ZoneState
+	censusPushEvents                                    chan event.Typer
+	// eventUpdates                                        chan eventInstance
+	eventUpdates            chan EventState
 	continentUnlocks        chan continentUnlock
-	zoneLookups             map[serverZone]time.Time // zoneLookups is a cache of queried zone IDs
+	zoneLookups             map[uniqueZone]time.Time // zoneLookups is a cache of queried zone IDs
 	characterFactionResults chan characterFaction
 
 	queries chan query
@@ -130,8 +107,8 @@ func (manager *Manager) Run(ctx context.Context) {
 
 	go func() {
 		for {
-			updateActiveEventInstances(ctx, manager.ps2alerts)
 			getMapData(ctx, manager, manager.mapUpdates)
+			updateActiveEventInstances(ctx, manager.ps2alerts)
 			select {
 			case <-ctx.Done():
 				return
@@ -176,7 +153,7 @@ func (manager *Manager) Run(ctx context.Context) {
 			case event.GainExperience:
 				handleGainExperience(manager, event)
 			case event.FacilityControl:
-				checkZone(ctx, manager, serverZone{event.WorldID, event.ZoneID})
+				checkZone(ctx, manager, uniqueZone{event.WorldID, event.ZoneID})
 				// handleFacilityControl(manager, event) // when warpgates change, send to unlocks channel
 			}
 		case <-cronTasks.C:
@@ -188,35 +165,46 @@ func (manager *Manager) Run(ctx context.Context) {
 	}
 }
 
-// checkZone checks whether a zone should start being actively tracked.
-func checkZone(ctx context.Context, manager *Manager, zone serverZone) {
+type trackedPlayer struct {
+	// homeFaction needs to be populated by looking up character IDs on the census api
+	// it's used for world population tracking, where NSO don't have a team assigned.
+	homeFaction ps2.FactionID
 
+	// team is the current faction as determined by incoming kill events
+	team     ps2.FactionID
+	world    ps2.WorldID
+	zone     ps2.ZoneInstanceID
+	lastSeen time.Time
+}
+
+// popCounter maintains a faction population counter, where the index is a ps2.FactionID.
+type popCounter [5]int
+
+func (pc popCounter) Sum(factions ...ps2.FactionID) (sum int) {
+	if len(factions) == 0 {
+		factions = []ps2.FactionID{None, VS, NC, TR, NSO}
+	}
+	for _, f := range factions {
+		sum += pc[f]
+	}
+	return sum
+}
+
+// checkZone checks whether a zone should start being actively tracked.
+func checkZone(ctx context.Context, manager *Manager, zone uniqueZone) {
 	// we can short-circuit any zones checked recently
 	if t := manager.zoneLookups[zone]; time.Since(t) < time.Hour {
 		return
 	}
 	manager.zoneLookups[zone] = time.Now()
 
-	//
-	if _, exists := manager.worlds[zone.WorldID]; !exists {
-		slog.Warn("creating state tracker during runtime; this should have happened during initialization", "world_id", zone.WorldID)
-		w := manager.collections.GetWorld(zone.WorldID)
-		if w.WorldID == 0 {
-			w.WorldID = zone.WorldID
-		}
-		manager.worlds[zone.WorldID] = newWorldManager(w, manager.collections.ListContinents())
-	}
-	// we can skip if the zone is already being tracked
-	if _, tracking := manager.worlds[zone.WorldID].zones[zone.ZoneInstanceID]; tracking {
+	// we're not concerned with tracking non-playable zones like VR-Training
+	if !ps2.IsPlayableZone(zone.ZoneID()) {
 		return
 	}
 
-	zoneData := manager.collections.GetContinent(zone.ZoneID())
-	if zoneData.ContinentID == 0 {
-		zoneData.ContinentID = zone.ZoneID()
-	}
-	// we're not concerned with tracking non-playable zones like VR-Training
-	if !ps2.IsPlayableZone(zoneData.ContinentID) {
+	// if the zone is being tracked we don't need to do anything
+	if manager.newGlobalStateRenameThis.isTracking(zone) {
 		return
 	}
 
@@ -252,36 +240,56 @@ func (m *Manager) emitContinentUnlock(cu continentUnlock) {
 	}
 }
 
+func handleMap(manager *Manager, mapData census.ZoneState) {
+	id := uniqueZone{mapData.WorldID, mapData.ZoneInstanceID}
+	trackZone(manager, id)
+
+	zone := manager.newGlobalStateRenameThis.getZoneptr(id)
+	if zone == nil {
+		slog.Debug("returned zone pointer was nil; zone should have been initialized already", "id", id, "manager", manager, "map_data", mapData)
+		return
+	}
+
+	// check for a lock state change on the map
+	if zone.LastLock != nil && !mapData.IsLocked() {
+		//todo: re-implement unlock events
+		// 	manager.emitContinentUnlock(continentUnlock{mapData.WorldID, mapData.ZoneID()})
+	}
+
+	if mapData.IsUnstable() {
+		zone.ContinentState = unstable
+	} else if mapData.IsLocked() {
+		zone.ContinentState = locked
+	} else {
+		zone.ContinentState = unlocked
+	}
+	//todo: re-implement map update timestamps
+	zone.Regions = make([]RegionState, 0, len(mapData.Regions))
+	for _, regionData := range mapData.Regions {
+		zone.Regions = append(zone.Regions, RegionState{
+			Region:  regionData.RegionID,
+			Faction: regionData.FactionID,
+		})
+	}
+	zone.MapTimestamp = mapData.Timestamp
+}
+
 // trackZone checks if a zone is being tracked and fills zone data if it's not.
-func trackZone(m *Manager, z serverZone) {
-	ws := m.worlds[z.WorldID]
-	if zs, found := ws.zones[z.ZoneInstanceID]; !found {
-		zoneData := m.collections.GetContinent(z.ZoneID())
-		if zoneData.ContinentID == 0 {
-			zoneData.ContinentID = z.ZoneInstanceID.ZoneID()
+func trackZone(manager *Manager, zone uniqueZone) {
+	if !manager.newGlobalStateRenameThis.isTracking(zone) {
+		slog.Debug("creating state tracker during runtime; this should have happened during initialization", "world_id", zone.WorldID)
+		w := manager.collections.GetWorld(zone.WorldID)
+		cont := manager.collections.GetContinent(zone.ZoneID())
+		if cont.ContinentID == 0 {
+			cont.ContinentID = zone.ZoneID()
 		}
-		zs.Zone = zoneData
-		ws.zones[z.ZoneInstanceID] = zs
+		if w.WorldID == 0 {
+			w.WorldID = zone.WorldID
+		}
+		manager.newGlobalStateRenameThis.trackZone(w, zone.ZoneInstanceID, cont)
 	}
 }
 
-func handleMap(manager *Manager, mapData census.ZoneState) {
-	trackZone(manager, serverZone{mapData.WorldID, mapData.ZoneInstanceID})
-	ws := manager.worlds[mapData.WorldID]
-	zs := ws.zones[mapData.ZoneInstanceID]
-	if zs.continentState == locked && !mapData.IsLocked() {
-		manager.emitContinentUnlock(continentUnlock{mapData.WorldID, mapData.ZoneID()})
-	}
-	if mapData.IsUnstable() {
-		zs.continentState = unstable
-	} else if mapData.IsLocked() {
-		zs.continentState = locked
-	} else {
-		zs.continentState = unlocked
-	}
-	zs.mapTimestamp = mapData.Timestamp
-	ws.zones[mapData.ZoneInstanceID] = zs
-}
 func handleFacilityControl(m *Manager, e event.FacilityControl) {
 	// w := m.worlds[e.WorldID]
 	// zs, ok := w.zones[e.ZoneID]
@@ -331,6 +339,7 @@ func handleDeath(m *Manager, e event.Death) {
 	if e.AttackerCharacterID != 0 {
 		p1 := m.onlinePlayers[e.AttackerCharacterID]
 		if e.Timestamp.After(p1.lastSeen) {
+			p1.homeFaction = ps2.LoadoutFaction(e.AttackerLoadoutID)
 			p1.zone = e.ZoneID
 			p1.team = e.TeamID
 			p1.world = e.WorldID
@@ -341,6 +350,7 @@ func handleDeath(m *Manager, e event.Death) {
 
 	p2 := m.onlinePlayers[e.CharacterID]
 	if e.Timestamp.After(p2.lastSeen) {
+		p2.homeFaction = ps2.LoadoutFaction(e.CharacterLoadoutID)
 		p2.zone = e.ZoneID
 		p2.team = e.TeamID
 		p2.world = e.WorldID
@@ -353,23 +363,24 @@ func handleMetagame(ctx context.Context, m *Manager, e event.MetagameEvent, ch c
 
 	switch e.MetagameEventState {
 	case ps2.Started:
-
+		//todo: did I used to have code here?
 	case ps2.Restarted:
 	case ps2.Cancelled, ps2.Ended:
-		ei := m.activeMetagameEvents[e.EventInstanceID()]
-		ei.TimeEnded = &e.Timestamp
-		m.activeMetagameEvents[e.EventInstanceID()] = ei
+		event := m.newActiveMetagameEventsRenameThisAndDeleteTheOldOne[e.EventInstanceID()]
+		if event == nil {
+			return
+		}
+		event.Ended = &e.Timestamp
 	}
-	if eventData.Type == 8 {
-		// if eventData.isTerritory {
+	if ps2.IsTerritoryAlert(eventData.MetagameEventID) {
 		go func() {
 			// give ps2alerts a chance to create the event
 			time.Sleep(10 * time.Second)
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			i, err := ps2alerts.GetInstanceContext(ctx, ps2alerts.InstanceID(e.EventInstanceID()))
+			i, err := ps2alerts.GetInstanceContext(ctx, e.EventInstanceID())
 			if err != nil {
-				slog.Error("ps2alerts metagame event lookup failed", "error", err)
+				slog.Debug("ps2alerts metagame event lookup failed", "error", err)
 				return
 			}
 			select {
@@ -381,7 +392,7 @@ func handleMetagame(ctx context.Context, m *Manager, e event.MetagameEvent, ch c
 	}
 }
 func handleLock(m *Manager, e event.ContinentLock) {
-	m.worlds[e.WorldID].LockZone(e.ZoneID, e.Timestamp)
+
 }
 
 func handleLogin(m *Manager, e event.PlayerLogin) {
@@ -444,13 +455,8 @@ func (m *Manager) handleLogin(e event.PlayerLogin) {
 }
 
 func countPlayers(m *Manager) {
-	type zoneKey struct {
-		ps2.WorldID
-		ps2.ZoneInstanceID
-	}
-
 	worldCount := make(map[ps2.WorldID]popCounter)
-	zoneCount := make(map[zoneKey]popCounter)
+	zoneCount := make(map[uniqueZone]popCounter)
 
 	for _, player := range m.onlinePlayers {
 
@@ -464,26 +470,32 @@ func countPlayers(m *Manager) {
 		wcount[player.homeFaction]++
 		worldCount[player.world] = wcount
 
-		z := zoneKey{player.world, player.zone}
+		z := uniqueZone{player.world, player.zone}
 		wcount = zoneCount[z]
 		wcount[player.team]++
 		zoneCount[z] = wcount
 	}
 
-	for wid, ws := range m.worlds {
-		ws.pop = worldCount[wid]
+	for _, ws := range m.newGlobalStateRenameThis.Worlds {
+		wid := ws.WorldID
+		m.newGlobalStateRenameThis.setWorldPop(wid, worldCount[ws.WorldID])
 
-		for zid, zs := range ws.zones {
-			zs.pop = zoneCount[zoneKey{wid, zid}]
-			ws.zones[zid] = zs
+		for _, zs := range ws.Zones {
+			id := uniqueZone{WorldID: wid, ZoneInstanceID: zs.MapID}
+			m.newGlobalStateRenameThis.setZonePop(id, zoneCount[id])
 		}
 	}
 
 }
 func removeStaleEvents(m *Manager) {
-	for id, e := range m.activeMetagameEvents {
-		if time.Now().After(e.TimeStarted.Add(e.Duration.Duration() + 5*time.Minute)) {
-			delete(m.activeMetagameEvents, id)
+	for id, e := range m.newActiveMetagameEventsRenameThisAndDeleteTheOldOne {
+		if time.Now().After(e.Started.Add(e.EventDuration + 5*time.Minute)) {
+			zid := uniqueZone{
+				WorldID:        e.ID.WorldID,
+				ZoneInstanceID: e.MapID,
+			}
+			m.newGlobalStateRenameThis.setEvent(zid, nil)
+			delete(m.newActiveMetagameEventsRenameThisAndDeleteTheOldOne, id)
 		}
 	}
 }
@@ -497,19 +509,46 @@ func (m *Manager) handleLogout(e event.PlayerLogout) {
 }
 
 func handleInstance(manager *Manager, ps2aInstance ps2alerts.Instance) {
-	id := ps2.MetagameEventInstanceID(ps2aInstance.InstanceID)
-	event := manager.activeMetagameEvents[id]
-	if event.MetagameEventID == 0 {
-		event.MetagameEvent = manager.collections.GetEvent(ps2aInstance.CensusMetagameEventType)
-		event.World = manager.collections.GetWorld(ps2aInstance.World)
+	id := ps2aInstance.InstanceID
+	event := manager.newActiveMetagameEventsRenameThisAndDeleteTheOldOne[id]
+	if event == nil {
+		eventData := manager.collections.GetEvent(ps2aInstance.CensusMetagameEventType)
+		event = &EventState{
+			ID:               id,
+			MapID:            ps2aInstance.Zone,
+			MetagameEventID:  eventData.MetagameEventID,
+			EventName:        eventData.Name.String(),
+			EventDescription: eventData.Description.String(),
+			EventDuration:    eventData.Duration,
+			IsContinentLock:  ps2.IsContinentLock(eventData.MetagameEventID),
+			IsTerritory:      ps2.IsTerritoryAlert(eventData.MetagameEventID),
+			StartingFaction:  ps2.StartingFaction(eventData.MetagameEventID),
+			EventURL:         fmt.Sprintf("https://ps2alerts.com/alert/%s", id),
+			Started:          ps2aInstance.TimeStarted,
+		}
+		manager.newActiveMetagameEventsRenameThisAndDeleteTheOldOne[id] = event
+		zid := uniqueZone{
+			WorldID:        ps2aInstance.World,
+			ZoneInstanceID: ps2aInstance.Zone,
+		}
+		manager.newGlobalStateRenameThis.setEvent(zid, event)
 	}
-	event.Instance = ps2aInstance
-	manager.activeMetagameEvents[id] = event
 
-	select {
-	case manager.eventUpdates <- event:
-	default:
+	event.Score = score{
+		NC: float64(ps2aInstance.Result.Nc),
+		TR: float64(ps2aInstance.Result.Tr),
+		VS: float64(ps2aInstance.Result.Vs),
 	}
+
+	if ps2aInstance.Result.Victor != nil {
+		event.Victor = *ps2aInstance.Result.Victor
+	}
+	event.Ended = ps2aInstance.TimeEnded
+
+	// select {
+	// case manager.eventUpdates <- event: // this is where I would broadcast that event data is updated and e.g. update discord messages
+	// default:
+	// }
 }
 
 func handleCharacterFactionResult(manager *Manager, result characterFaction) {
@@ -525,16 +564,15 @@ func handleCharacterFactionResult(manager *Manager, result characterFaction) {
 }
 
 func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState) {
-	for wid, ws := range m.worlds {
-		var zones []ps2.ZoneInstanceID
-		for zid := range ws.zones {
-			zones = append(zones, zid)
-		}
-		if len(zones) == 0 {
-			return
-		}
-		go func(w ps2.WorldID, zones []ps2.ZoneInstanceID) {
-			ctx, stop := context.WithTimeout(ctx, 15*time.Second)
+	worldZones := m.newGlobalStateRenameThis.listZones()
+	for world, zones := range worldZones {
+		// removed concurrency:
+		//go
+		func(w ps2.WorldID, zones []ps2.ZoneInstanceID) {
+			if len(zones) == 0 {
+				return
+			}
+			ctx, stop := context.WithTimeout(ctx, 30*time.Second)
 			defer stop()
 			zm, err := census.GetMap(ctx, m.censusClient, w, zones...)
 			if err != nil {
@@ -544,7 +582,7 @@ func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState
 			for _, z := range zm {
 				results <- z
 			}
-		}(wid, zones)
+		}(world, zones)
 	}
 }
 
@@ -576,112 +614,6 @@ func updateActiveEventInstances(ctx context.Context, ch chan<- ps2alerts.Instanc
 	}
 }
 
-// func (m *Manager) getEvent(i ps2.MetagameEventInstanceID) (ei eventInstance, err error) {
-// 	q := managerQuery[eventInstance]{
-// 		query: func(m *Manager) (i eventInstance) {
-// 			return m.activeMetagameEvents[ps2.MetagameEventInstanceID(i.InstanceID)]
-// 		},
-// 		result: make(chan eventInstance, 1),
-// 	}
-
-// 	if err := m.query(q); err != nil {
-// 		return ei, err
-// 	}
-
-// 	r := <-q.result
-// 	return r, nil
-// }
-
-type infoCardServerStatus struct {
-	serverID   ps2.WorldID
-	serverName string
-	isLocked   bool
-	pop        popCounter
-	continents []struct {
-		contID               ps2.ContinentID
-		name                 string
-		state                continentState
-		pop                  popCounter
-		alertID              ps2.MetagameEventID
-		alertName            string
-		alertDescription     string
-		alertIsContinentLock bool
-		alertEnd             time.Time
-		lockedAt             time.Time
-	}
-}
-
-func (m *Manager) getServerInfoCard(serverID ps2.WorldID) (infoCardServerStatus, error) {
-
-	q := managerQuery[infoCardServerStatus]{
-		query: func(m *Manager) (c infoCardServerStatus) {
-			w := m.worlds[serverID]
-			c.serverID = w.WorldID
-			c.serverName = w.Name.String()
-			c.isLocked = w.isLocked
-			c.pop = w.pop
-			zc := make(map[ps2.ContinentID]int)
-			for _, zs := range w.zones {
-				zc[zs.ContinentID]++
-				var cont struct {
-					contID               ps2.ContinentID
-					name                 string
-					state                continentState
-					pop                  popCounter
-					alertID              ps2.MetagameEventID
-					alertName            string
-					alertDescription     string
-					alertIsContinentLock bool
-					alertEnd             time.Time
-					lockedAt             time.Time
-				}
-				cont.contID = zs.ContinentID
-				if zc[zs.ContinentID] == 1 {
-					cont.name = zs.Name.String()
-				} else {
-					cont.name = fmt.Sprintf("%s %d", zs.Name, zc[zs.ContinentID])
-				}
-				var ei eventInstance
-				for _, e := range m.activeMetagameEvents {
-					if e.WorldID == serverID && e.ContinentID == zs.ContinentID {
-						ei = e
-						break
-					}
-				}
-				cont.alertID = ei.MetagameEventID
-				cont.alertName = ei.MetagameEvent.Name.String()
-				cont.alertDescription = ei.MetagameEvent.Description.String()
-				cont.alertIsContinentLock = ps2.IsContinentLock(ei.CensusMetagameEventType)
-				cont.pop = zs.pop
-				cont.alertEnd = ei.TimeStarted.Add(ei.Duration.Duration())
-				cont.lockedAt = zs.lockedAt
-				cont.state = zs.continentState
-				c.continents = append(c.continents, cont)
-			}
-			return c
-		},
-		result: make(chan infoCardServerStatus, 1),
-	}
-
-	if err := m.query(q); err != nil {
-		return infoCardServerStatus{}, err
-	}
-	r := <-q.result
-	return r, nil
-}
-
-type infoCardMetagameEvent struct {
-	populationBracket string // high, low, etc.
-	population        [5]int
-	territory         [5]int
-	url               string // event details url, e.g. ps2alerts.com
-	imageURL          string
-	victor            *ps2.FactionID
-	started           time.Time
-	ended             *time.Time
-	duration          time.Duration
-}
-
 var errGoneHome = errors.New("manager is not running")
 
 func (m *Manager) query(q query) error {
@@ -692,84 +624,53 @@ func (m *Manager) query(q query) error {
 		return errGoneHome
 	}
 }
-func newWorldManager(w census.World, continents []census.Zone) *worldStatus {
-	ws := &worldStatus{
-		World: w,
-		zones: make(map[ps2.ZoneInstanceID]zoneStatus),
-	}
 
-	for _, z := range continents {
-		ws.zones[ps2.ZoneInstanceID(z.ContinentID)] = zoneStatus{Zone: z}
-	}
-	return ws
-}
-
-type worldStatus struct {
-	census.World
-	isLocked bool
-	zones    map[ps2.ZoneInstanceID]zoneStatus
-	pop      popCounter
-}
-
-func (w *worldStatus) LockZone(z ps2.ZoneInstanceID, t time.Time) {
-	// instanced zones like koltyr or outfit wars should be removed when they lock
-	if z.IsInstanced() {
-		delete(w.zones, z)
-		return
-	}
-	zs := w.zones[z]
-	zs.lockedAt = t
-	zs.continentState = locked
-	w.zones[z] = zs
-}
-
-type zoneStatus struct {
-	census.Zone
-	continentState continentState
-	lockedAt       time.Time
-	pop            popCounter
-	mapTimestamp   time.Time
-}
-type eventInstance struct {
-	ps2alerts.Instance
-	metagameEventData
-	census.World
-}
-type metagameEventData struct {
-	census.MetagameEvent
-	census.Zone
-	ps2.FactionID
-}
+// func (w *worldStatus) LockZone(z ps2.ZoneInstanceID, t time.Time) {
+// 	// instanced zones like koltyr or outfit wars should be removed when they lock
+// 	if z.IsInstanced() {
+// 		delete(w.zones, z)
+// 		return
+// 	}
+// 	zs := w.zones[z]
+// 	zs.lockedAt = t
+// 	zs.continentState = locked
+// 	w.zones[z] = zs
+// }
 
 type managerQuery[T any] struct {
 	query  func(*Manager) T
-	result chan T
-}
-type queryResult[T any] struct {
-	value T
-	err   error
+	result chan T // result must be buffered or the responses may get dropped
 }
 
-func (query managerQuery[T]) Do(manager *Manager) {
-	query.result <- query.query(manager)
+func (question managerQuery[T]) Do(manager *Manager) {
+	select {
+	case question.result <- question.query(manager):
+	default:
+	}
+
 }
 
 type query interface {
 	Do(*Manager)
 }
 
-type zoneState struct {
-	owner      ps2.FactionID
-	lockedAt   time.Time
-	state      continentState
-	unlockedAt time.Time
-}
-
-func getWorldState(w ps2.WorldID) (zs []zoneState, err error) {
-	return
-}
-
 type characterFaction struct {
 	ps2.CharacterID
 	ps2.FactionID
+}
+
+func newEvent(id ps2.MetagameEventInstanceID, eventID ps2.MetagameEventID, start time.Time, db ps2db) *EventState {
+	eventData := db.GetEvent(eventID)
+	event := &EventState{
+		ID:               id,
+		MetagameEventID:  eventID,
+		EventName:        eventData.Name.String(),
+		EventDescription: eventData.Description.String(),
+		EventDuration:    eventData.Duration,
+		IsContinentLock:  ps2.IsContinentLock(eventID),
+		IsTerritory:      ps2.IsTerritoryAlert(eventID),
+		StartingFaction:  ps2.StartingFaction(eventID),
+		Started:          start,
+	}
+	return event
 }
