@@ -111,6 +111,15 @@ func (c *Client) Run(ctx context.Context) error {
 	return err
 }
 
+// Send writes a subscription message to the event push service.
+//
+// Example:
+//
+//	sub := wsc.Subscribe{}
+//	sub.AllWorlds()
+//	sub.AllCharacters()
+//	sub.AllEvents()
+//	client.Send(sub)
 func (c *Client) Send(cs commander) {
 	b, err := json.Marshal(cs.command())
 	if err != nil {
@@ -287,9 +296,12 @@ type noopMessageLogger struct{}
 func (noopMessageLogger) Sent([]byte)     {}
 func (noopMessageLogger) Received([]byte) {}
 
+// MessageLogger implements the messageLogger interface accepted by [client.SetMessageLogger].
+// R and S can be the same writer.
+// Writers cannot be nil; use io.Discard instead.
 type MessageLogger struct {
-	R  io.Writer
-	S  io.Writer
+	R  io.Writer // Writer for messages received by the client
+	S  io.Writer // Writer for outgoing messages sent by the client
 	mu sync.Mutex
 
 	SentPrefix     string
