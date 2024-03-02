@@ -11,15 +11,15 @@ import (
 	"github.com/Travis-Britz/ps2"
 )
 
-func Get(w ps2.WorldID, i ps2.InstanceID) (instance Instance, err error) {
+func Get(w ps2.WorldID, i ps2.InstanceID) (instance Alert, err error) {
 	return GetInstance(ps2.MetagameEventInstanceID{WorldID: w, InstanceID: i})
 }
 
-func GetInstance(id ps2.MetagameEventInstanceID) (i Instance, err error) {
+func GetInstance(id ps2.MetagameEventInstanceID) (i Alert, err error) {
 	return GetInstanceContext(context.Background(), id)
 }
 
-func GetInstanceContext(ctx context.Context, id ps2.MetagameEventInstanceID) (i Instance, err error) {
+func GetInstanceContext(ctx context.Context, id ps2.MetagameEventInstanceID) (i Alert, err error) {
 	i.InstanceID = id
 	url := "https://api.ps2alerts.com/instances/" + id.String()
 	slog.Info("ps2alerts query", "url", url)
@@ -45,11 +45,11 @@ func GetInstanceContext(ctx context.Context, id ps2.MetagameEventInstanceID) (i 
 	return i, err
 }
 
-func GetActive() (i []Instance, err error) {
+func GetActive() (i []Alert, err error) {
 	return GetActiveContext(context.Background())
 }
 
-func GetActiveContext(ctx context.Context) (i []Instance, err error) {
+func GetActiveContext(ctx context.Context) (i []Alert, err error) {
 	url := "https://api.ps2alerts.com/instances/active"
 	slog.Info("ps2alerts query", "url", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)

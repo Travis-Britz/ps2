@@ -85,7 +85,7 @@ func (b Bracket) Min() int {
 	}
 }
 
-type Instance struct {
+type Alert struct {
 	ID                      string                      `json:"_id"`
 	World                   ps2.WorldID                 `json:"world"`
 	CensusInstanceID        ps2.InstanceID              `json:"censusInstanceId"`
