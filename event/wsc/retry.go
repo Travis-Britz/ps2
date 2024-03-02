@@ -38,7 +38,7 @@ func WithRetry(c *Client, ctx context.Context) error {
 					if delay > time.Hour {
 						delay = time.Hour
 					}
-					slog.Info("planetside push service disconnected", "error", err, "retry_delay", delay.String())
+					slog.Info("planetside websocket service disconnected", "error", err, "retry_delay", delay.String())
 				}
 			}
 
