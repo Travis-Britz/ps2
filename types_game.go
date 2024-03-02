@@ -171,7 +171,8 @@ type OutfitID int64
 // The only way to convert back from a ContinentID to ZoneID (or GeometryID) is by storing a lookup table.
 // A ContinentID cannot, for instance, be used to query the census API because we don't know whether to query by zone_id or geometry_id.
 // ZoneInstanceID can convert itself to ZoneID, GeometryID, or ContinentID because it has the dynamic property embedded.
-// None of the three can convert back to a ZoneInstanceID because the ephemeral instance counter is lost.
+// ContinentID and ZoneID can be cast to ZoneInstanceID if the zone is known to be static ("dynamic" = false).
+// GeometyrID can only be converted to ZoneInstanceID if the ephemeral instance counter is known.
 type ContinentID uint16
 
 func (c ContinentID) String() string { return strconv.Itoa(int(c)) }
@@ -231,9 +232,15 @@ func (g GeometryID) String() string   { return strconv.Itoa(int(g)) }
 // https://github.com/cooltrain7/Planetside-2-API-Tracker/wiki/Tutorial:-Zone-IDs
 type ZoneInstanceID uint32
 
+// String prints id in a debugging-friendly format.
+// Use [StringID] to get the ID as a string.
 func (id ZoneInstanceID) String() string {
-	return strconv.FormatInt(int64(id), 10)
+	if id.IsInstanced() {
+		return fmt.Sprintf("%d<<16|%d", id.Instance(), id.DefinitionID())
+	}
+	return id.ZoneID().String()
 }
+func (id ZoneInstanceID) StringID() string { return strconv.FormatInt(int64(id), 10) }
 
 // ZoneID returns the continent ID
 func (id ZoneInstanceID) ZoneID() ContinentID { return ContinentID(id & 0x0000FFFF) }
@@ -300,7 +307,7 @@ func (w WorldID) GoString() string {
 	case Rashnu:
 		return "ps2.Rashnu"
 	default:
-		return fmt.Sprintf("WorldID(%d)", int(w))
+		return fmt.Sprintf("ps2.WorldID(%d)", int(w))
 	}
 }
 
