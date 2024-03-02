@@ -128,9 +128,9 @@ func (c *Client) read(ctx context.Context, messages chan<- rawMessage) {
 	defer close(messages)
 	var message []byte
 	var err error
-	var m rawMessage
 	messageLogger := c.messageLogger
 	for {
+		m := rawMessage{}
 		_, message, err = c.conn.ReadMessage()
 		if err != nil {
 			c.exit(fmt.Errorf("read: %w", err))
