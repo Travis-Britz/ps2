@@ -33,10 +33,10 @@ type MapRegion struct {
 	RewardCurrencyID ps2.RewardCurrencyID `json:"reward_currency_id,string"`
 }
 type Facility struct {
-	FacilityID     ps2.FacilityID     `json:"facility_id,string"`
-	FacilityName   string             `json:"facility_name"`
-	FacilityTypeID ps2.FacilityTypeID `json:"facility_type_id,string"`
-	FacilityType   string             `json:"facility_type"`
+	FacilityID       ps2.FacilityID     `json:"facility_id,string"`
+	FacilityName     string             `json:"facility_name"`
+	FacilityType     ps2.FacilityTypeID `json:"facility_type_id,string"`
+	FacilityTypeName string             `json:"facility_type"`
 }
 type FacilityType struct {
 	FacilityTypeID ps2.FacilityTypeID `json:"facility_type_id,string"`
@@ -67,7 +67,7 @@ type Region struct {
 func GetMap(ctx context.Context, client *Client, world ps2.WorldID, zone ...ps2.ZoneInstanceID) (zm []ZoneState, err error) {
 	zones := make([]string, 0, 5)
 	for _, z := range zone {
-		zones = append(zones, z.String())
+		zones = append(zones, z.StringID())
 	}
 	query := "map?world_id=" + world.String() + "&zone_ids=" + strings.Join(zones, ",")
 	var response struct {
