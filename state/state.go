@@ -1,4 +1,4 @@
-package statemanager
+package state
 
 import (
 	"encoding/json"
@@ -60,21 +60,20 @@ func (state *GlobalState) setWorldPop(id ps2.WorldID, count popCounter) {
 }
 
 func (state *GlobalState) setZonePop(id uniqueZone, count popCounter) {
-	for i, world := range state.Worlds {
-		if world.WorldID == id.WorldID {
-			for j, zone := range world.Zones {
-				if zone.MapID == id.ZoneInstanceID {
-					pop := zonepop{
-						VS: count[VS],
-						NC: count[NC],
-						TR: count[TR],
-					}
-					state.Worlds[i].Zones[j].Population = pop
-					return
-				}
-			}
-		}
+	zone := state.getZoneptr(id)
+	if zone == nil {
+		slog.Debug("tried to set population on untracked zone", "id", id)
+		return
 	}
+	zone.Population = zonepop{
+		VS: count[VS],
+		NC: count[NC],
+		TR: count[TR],
+	}
+}
+
+func (state *GlobalState) deleteEvent(id uniqueZone) {
+	state.setEvent(id, nil)
 }
 
 // setEvent is only used to attach new events or set an event to nil.
@@ -85,30 +84,16 @@ func (state *GlobalState) setEvent(id uniqueZone, event *EventState) {
 		// I need a stack trace if this condition happens
 		panic("attempted to set event on an empty id")
 	}
-	for i, world := range state.Worlds {
-		if world.WorldID == id.WorldID {
-			for j, zone := range world.Zones {
-				if zone.MapID == id.ZoneInstanceID {
-					state.Worlds[i].Zones[j].Event = event
-					return
-				}
-			}
-		}
+	zone := state.getZoneptr(id)
+	if zone == nil {
+		slog.Debug("attempted to set event state on an untracked zone", "zone", id, "event", event)
+		return
 	}
+	zone.Event = event
 }
 
-func (state GlobalState) isTracking(id uniqueZone) bool {
-	zone := state.getZone(id)
-	if zone.MapID == 0 {
-		return false
-	}
-	return true
-}
+func (state GlobalState) isTracking(id uniqueZone) bool { return state.getZoneptr(id) != nil }
 
-func (state GlobalState) getZone(id uniqueZone) ZoneState {
-	world := state.getWorld(id.WorldID)
-	return world.getZone(id.ZoneInstanceID)
-}
 func (state GlobalState) listZones() map[ps2.WorldID][]ps2.ZoneInstanceID {
 	result := make(map[ps2.WorldID][]ps2.ZoneInstanceID)
 
@@ -134,12 +119,6 @@ func (state GlobalState) getZoneptr(id uniqueZone) *ZoneState {
 	return nil
 }
 
-func (state GlobalState) getEvent(id uniqueZone) *EventState {
-	world := state.getWorld(id.WorldID)
-	zone := world.getZone(id.ZoneInstanceID)
-	return zone.Event
-}
-
 func (state GlobalState) getWorld(id ps2.WorldID) (ws WorldState) {
 	for _, world := range state.Worlds {
 		if id == world.WorldID {
@@ -150,16 +129,7 @@ func (state GlobalState) getWorld(id ps2.WorldID) (ws WorldState) {
 	return ws
 }
 
-func (state WorldState) getZone(id ps2.ZoneInstanceID) (zs ZoneState) {
-	for _, zone := range state.Zones {
-		if id == zone.MapID {
-			zs = zone
-			break
-		}
-	}
-	return zs
-}
-
+// uniqueZone uniquely identifies a running game zone.
 type uniqueZone struct {
 	ps2.WorldID
 	ps2.ZoneInstanceID
@@ -256,7 +226,7 @@ type ZoneState struct {
 	Population     zonepop            `json:"population"`
 	LastLock       *time.Time         `json:"last_lock"`
 	LastUnlock     *time.Time         `json:"last_unlock"`
-	Regions        []RegionState      `json:"region_control"`
+	Regions        []RegionState      `json:"-"`
 	MapTimestamp   time.Time          `json:"map_timestamp"`
 	Event          *EventState        `json:"event"`
 }
@@ -308,9 +278,9 @@ type EventState struct {
 	Ended            *time.Time                  `json:"ended"`
 }
 
-func (event *EventState) MarshalJSON() ([]byte, error) {
+func (event EventState) MarshalJSON() ([]byte, error) {
 	type shadowType EventState // prevent recursion
-	shadowCopy := shadowType(*event)
+	shadowCopy := shadowType(event)
 	shadowCopy.EventDuration /= time.Second // this is the reason we need to change behavior for marshaling
 	return json.Marshal(shadowCopy)
 }

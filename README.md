@@ -80,9 +80,9 @@ TODO:
 
 ([Nanite Systems](https://nanite-systems.net/) should also be compatible as a drop-in replacement to handle the reliability of connections)
 
-## statemanager (working name)
+## state
 
-Package `statemanager` is for tracking live game state:
+Package `state` is for tracking live game state:
 
 -   population (per world and zone)
 -   continent lock status
@@ -92,7 +92,7 @@ Package `statemanager` is for tracking live game state:
 This is done by attaching to a `wsc.Client` and listening for various population and territory events,
 as well as collecting results from 3rd-party sites like ps2alerts.com.
 
-`statemanager` can also emit continent unlock events,
+`state` can also emit continent unlock events,
 which are not directly available from the official push service.
 
 ## map
