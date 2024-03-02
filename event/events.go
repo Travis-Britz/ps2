@@ -160,7 +160,6 @@ var handlers = map[ps2.Event]func(Raw) Typer{
 			IsCritical:          bool(r.IsCritical),
 			IsHeadshot:          bool(r.IsHeadshot),
 			Timestamp:           time.Unix(r.Timestamp, 0).UTC(),
-			VehicleID:           r.VehicleId,
 			WorldID:             r.WorldId,
 			ZoneID:              r.ZoneId,
 		}
@@ -277,13 +276,13 @@ type ContinentLock struct {
 	Timestamp         time.Time
 	WorldID           ps2.WorldID
 	ZoneID            ps2.ZoneInstanceID
-	TriggeringFaction ps2.FactionID
+	TriggeringFaction ps2.FactionID // this might be the alert
 	PreviousFaction   ps2.FactionID
 
-	PopulationVS    int // seems to be territory control in the event stream (0,0,100)
+	PopulationVS    int // seems to be population percentage at the time of lock
 	PopulationNC    int
 	PopulationTR    int
-	MetagameEventID ps2.MetagameEventID
+	MetagameEventID ps2.MetagameEventID // I have not seen any metagame event IDs that were not 0
 }
 
 func (ContinentLock) Type() ps2.Event   { return ps2.ContinentLock }
@@ -366,18 +365,17 @@ func (e VehicleDestroy) Key() UniqueKey {
 
 type Death struct {
 	AttackerCharacterID ps2.CharacterID
-	AttackerFireModeID  ps2.FireModeID
-	AttackerLoadoutID   ps2.LoadoutID
+	AttackerFireModeID  ps2.FireModeID // AttackerFireModeID may be 0 in rare cases when AttackerCharacterID != 0
+	AttackerLoadoutID   ps2.LoadoutID  // AttackerLoadoutID may be 0 in rare cases when AttackerCharacterID != 0
 	AttackerVehicleID   ps2.VehicleID
 	AttackerWeaponID    ps2.ItemID
-	AttackerTeamID      ps2.FactionID
+	AttackerTeamID      ps2.FactionID // AttackerTeamID may be 0 in rare cases when AttackerCharacterID != 0
 	CharacterID         ps2.CharacterID
 	CharacterLoadoutID  ps2.LoadoutID
 	TeamID              ps2.FactionID
 	IsCritical          bool
 	IsHeadshot          bool
 	Timestamp           time.Time
-	VehicleID           ps2.VehicleID
 	WorldID             ps2.WorldID
 	ZoneID              ps2.ZoneInstanceID
 }
@@ -385,9 +383,18 @@ type Death struct {
 func (e Death) IsSuicide() bool       { return e.AttackerCharacterID == e.CharacterID }
 func (e Death) IsRoadkill() bool      { return e.AttackerVehicleID != 0 && e.AttackerWeaponID == 0 }
 func (e Death) IsNaturalCauses() bool { return e.AttackerCharacterID == 0 }
-func (Death) Type() ps2.Event         { return ps2.Death }
-func (e Death) Time() time.Time       { return e.Timestamp }
-func (e Death) Key() UniqueKey        { return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0) }
+
+// IsMagic is a rare case where the attacker ID is known but the method is not.
+// I suspect these are things like dying to fall damage after being damaged by someone,
+// but I haven't done testing.
+// Some (all?) of these magic deaths will be missing attacker team and attacker loadout,
+// which is annoying.
+func (e Death) IsMagic() bool {
+	return e.AttackerCharacterID != 0 && e.AttackerVehicleID == 0 && e.AttackerWeaponID == 0
+}
+func (Death) Type() ps2.Event   { return ps2.Death }
+func (e Death) Time() time.Time { return e.Timestamp }
+func (e Death) Key() UniqueKey  { return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0) }
 
 // AchievementEarned represents weapon medals or service ribbons.
 type AchievementEarned struct {
