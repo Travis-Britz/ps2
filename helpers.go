@@ -62,7 +62,7 @@ func IsPlayableZone(z ContinentID) bool {
 func IsHiddenWorld(w WorldID) bool {
 	switch w {
 	// hidden PC worlds
-	case Jaeger, Apex:
+	case Apex, Briggs:
 		return true
 
 		// hidden PS4 worlds
