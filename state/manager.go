@@ -286,9 +286,10 @@ func (store *onlinePlayerStore) receivedEvent(id ps2.CharacterID, world ps2.Worl
 	if !p.saved && p.homeFaction != 0 {
 		p.saved = true
 		store.saver.SavePlayerFaction(id, p.homeFaction)
-		// m.gameData.SavePlayerFaction(e.CharacterID, p2.homeFaction)
 	}
-
+	p.world = world
+	p.zone = zone
+	p.lastSeen = timestamp
 	store.players[id] = p
 }
 func (store *onlinePlayerStore) factionUpdate(id ps2.CharacterID, faction ps2.FactionID) {
