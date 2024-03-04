@@ -78,12 +78,11 @@ func (c *Client) Run(ctx context.Context) error {
 	ctx, shutdown := context.WithCancel(ctx)
 	defer shutdown()
 	url := c.url()
-	slog.Info("dialing event service", "url", url)
-
 	dialer := websocket.Dialer{
 		// Proxy:            http.ProxyFromEnvironment,
 		HandshakeTimeout: 10 * time.Second,
 	}
+	slog.Debug("dialing event service", "url", url)
 	conn, _, err := dialer.DialContext(ctx, url, nil)
 	// conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
 	if err != nil {
@@ -91,7 +90,6 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 	defer conn.Close()
 	c.conn = conn
-	slog.Info("connected to event service")
 	if c.connectHandler != nil {
 		c.connectHandler()
 	}
