@@ -31,7 +31,7 @@ func GetFacilityControlEvents(ctx context.Context, c *Client, env ps2.Environmen
 	if worlds != nil {
 		s := make([]string, 0, 10)
 		for _, w := range worlds {
-			s = append(s, w.String())
+			s = append(s, w.StringID())
 		}
 		q += "&world_id=" + strings.Join(s, ",")
 	}

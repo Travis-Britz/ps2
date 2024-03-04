@@ -14,7 +14,7 @@ import (
 )
 
 func GetWorldPop(ctx context.Context, w ps2.WorldID) (p PopResult, err error) {
-	url := "https://wt.honu.pw/api/population/" + w.String()
+	url := "https://wt.honu.pw/api/population/" + w.StringID()
 	log.Printf("checking: %s", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -41,7 +41,7 @@ func GetWorldPop(ctx context.Context, w ps2.WorldID) (p PopResult, err error) {
 func GetWorldPopMultiple(ctx context.Context, worlds ...ps2.WorldID) (p []PopResult, err error) {
 	q := url.Values{}
 	for _, w := range worlds {
-		q.Add("worldid", w.String())
+		q.Add("worldid", w.StringID())
 	}
 	url := "https://wt.honu.pw/api/population/multiple" + q.Encode()
 	log.Printf("checking: %s", url)

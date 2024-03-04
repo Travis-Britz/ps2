@@ -175,7 +175,38 @@ type OutfitID int64
 // GeometyrID can only be converted to ZoneInstanceID if the ephemeral instance counter is known.
 type ContinentID uint16
 
-func (c ContinentID) String() string { return strconv.Itoa(int(c)) }
+func (c ContinentID) String() string {
+	switch c {
+	case Indar:
+		return "Indar"
+	case Hossin:
+		return "Hossin"
+	case Amerish:
+		return "Amerish"
+	case Esamir:
+		return "Esamir"
+	case Nexus:
+		return "Nexus"
+	case Extinction:
+		return "Extinction"
+	case Desolation2:
+		return "Desolation2"
+	case Ascension:
+		return "Ascension"
+	case Koltyr:
+		return "Koltyr"
+	case Oshur:
+		return "Oshur"
+	case Desolation:
+		return "Desolation"
+	case Sanctuary:
+		return "Sanctuary"
+	case Tutorial:
+		return "Tutorial"
+	default:
+		return strconv.Itoa(int(c))
+	}
+}
 func (c ContinentID) GoString() string {
 	switch c {
 	case Indar:
@@ -271,7 +302,49 @@ func (id ZoneInstanceID) GoString() string {
 // WorldID is the ID for a server like Emerald, Cobalt, etc.
 type WorldID uint16
 
-func (w WorldID) String() string { return strconv.Itoa(int(w)) }
+func (w WorldID) StringID() string { return strconv.Itoa(int(w)) }
+
+// String is used to print for debugging; the output should not be relied upon for other cases.
+// Use StringID to get the ID number as a string.
+func (w WorldID) String() string {
+	switch w {
+	case Connery:
+		return "Connery"
+	case Miller:
+		return "Miller"
+	case Cobalt:
+		return "Cobalt"
+	case Emerald:
+		return "Emerald"
+	case Jaeger:
+		return "Jaeger"
+	case Apex:
+		return "Apex"
+	case Briggs:
+		return "Briggs"
+	case SolTech:
+		return "SolTech"
+	case Genudine:
+		return "Genudine"
+	case Palos:
+		return "Palos"
+	case Crux:
+		return "Crux"
+	case Searhus:
+		return "Searhus"
+	case Xelas:
+		return "Xelas"
+	case Ceres:
+		return "Ceres"
+	case Lithcorp:
+		return "Lithcorp"
+	case Rashnu:
+		return "Rashnu"
+	default:
+		return strconv.Itoa(int(w))
+	}
+}
+
 func (w WorldID) GoString() string {
 	switch w {
 	case Connery:

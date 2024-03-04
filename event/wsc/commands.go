@@ -76,7 +76,7 @@ func (s Subscribe) command() command {
 		c.Worlds = []string{"all"}
 	} else {
 		for _, w := range s.Worlds {
-			c.Worlds = append(c.Worlds, w.String())
+			c.Worlds = append(c.Worlds, w.StringID())
 		}
 	}
 	return c

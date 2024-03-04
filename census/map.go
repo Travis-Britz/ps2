@@ -69,7 +69,7 @@ func GetMap(ctx context.Context, client *Client, world ps2.WorldID, zone ...ps2.
 	for _, z := range zone {
 		zones = append(zones, z.StringID())
 	}
-	query := "map?world_id=" + world.String() + "&zone_ids=" + strings.Join(zones, ",")
+	query := "map?world_id=" + world.StringID() + "&zone_ids=" + strings.Join(zones, ",")
 	var response struct {
 		MapList []struct {
 			ZoneID  ps2.ZoneInstanceID `json:"ZoneId,string"`

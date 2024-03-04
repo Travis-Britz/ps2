@@ -14,7 +14,7 @@ import (
 )
 
 func GetWorldPop(ctx context.Context, w ps2.WorldID) (p WorldPop, err error) {
-	url := "https://ps2.fisu.pw/api/population/?world=" + w.String()
+	url := "https://ps2.fisu.pw/api/population/?world=" + w.StringID()
 	log.Printf("checking: %s", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
