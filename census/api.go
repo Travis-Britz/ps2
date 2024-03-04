@@ -40,6 +40,9 @@ type collectionNamer interface {
 }
 
 func LoadCollection[T collectionNamer](ctx context.Context, client *Client, collected *[]T) error {
+	if client == nil {
+		client = DefaultClient
+	}
 	var n T
 	collection := n.CollectionName()
 	const perPage = 5000
