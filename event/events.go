@@ -380,18 +380,20 @@ type Death struct {
 	ZoneID              ps2.ZoneInstanceID
 }
 
-func (e Death) IsSuicide() bool       { return e.AttackerCharacterID == e.CharacterID }
-func (e Death) IsRoadkill() bool      { return e.AttackerVehicleID != 0 && e.AttackerWeaponID == 0 }
-func (e Death) IsNaturalCauses() bool { return e.AttackerCharacterID == 0 }
+func (e Death) IsSuicide() bool  { return e.AttackerCharacterID == e.CharacterID }
+func (e Death) IsRoadkill() bool { return e.AttackerVehicleID != 0 && e.AttackerWeaponID == 0 }
+
+// func (e Death) IsNaturalCauses() bool { return e.AttackerCharacterID == 0 }
 
 // IsMagic is a rare case where the attacker ID is known but the method is not.
 // I suspect these are things like dying to fall damage after being damaged by someone,
 // but I haven't done testing.
 // Some (all?) of these magic deaths will be missing attacker team and attacker loadout,
 // which is annoying.
-func (e Death) IsMagic() bool {
-	return e.AttackerCharacterID != 0 && e.AttackerVehicleID == 0 && e.AttackerWeaponID == 0
-}
+//
+//	func (e Death) IsMagic() bool {
+//		return e.AttackerCharacterID != 0 && e.AttackerVehicleID == 0 && e.AttackerWeaponID == 0
+//	}
 func (Death) Type() ps2.Event   { return ps2.Death }
 func (e Death) Time() time.Time { return e.Timestamp }
 func (e Death) Key() UniqueKey  { return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), 0) }
@@ -446,13 +448,13 @@ type MetagameEvent struct {
 	FactionNC              float64 // for event ended, value is territory control (continent lock), kills (sudden death), and likely the event scores for other types like aerial anomalies
 	FactionTR              float64
 	FactionVS              float64
+	InstanceID             ps2.InstanceID
 	MetagameEventID        ps2.MetagameEventID
-	MetagameEventStateName string
 	MetagameEventState     ps2.MetagameEventStateID
+	MetagameEventStateName string
 	Timestamp              time.Time
 	WorldID                ps2.WorldID
 	ZoneID                 ps2.ZoneInstanceID
-	InstanceID             ps2.InstanceID
 }
 
 func (me MetagameEvent) EventInstanceID() ps2.MetagameEventInstanceID {
