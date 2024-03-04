@@ -39,18 +39,24 @@ type gameDataStore interface {
 }
 
 func New(db gameDataStore, censusClient *census.Client) *Manager {
+	factionLookups := make(chan ps2.CharacterID, 10)
 	m := &Manager{
-		gameData:                db,
-		census:                  censusClient,
-		alerts:                  make(map[ps2.MetagameEventInstanceID]*EventState),
-		alertUpdates:            make(chan ps2alerts.Alert),
-		players:                 make(onlinePlayerStore),
+		gameData:     db,
+		census:       censusClient,
+		alerts:       make(map[ps2.MetagameEventInstanceID]*EventState),
+		alertUpdates: make(chan ps2alerts.Alert),
+		players: onlinePlayerStore{
+			players:        make(map[ps2.CharacterID]onlinePlayerState),
+			factionLookups: factionLookups,
+			saver:          db,
+		},
 		censusPushEvents:        make(chan event.Typer, 5000),
 		mapUpdates:              make(chan census.ZoneState, 10),
 		facilityUpdates:         make(chan internalFacilityUpdate, 500),
 		zoneLookups:             make(map[uniqueZone]time.Time),
 		characterFactionResults: make(chan factionResult, 10),
-		characterFactionLookups: make(chan ps2.CharacterID, 10),
+		characterFactionLookups: factionLookups,
+		queryQueue:              make(chan query),
 	}
 
 	// initialize state for all static zones on all worlds
@@ -100,7 +106,6 @@ func (manager *Manager) AttachHandlers(client eventClient) {
 func (manager *Manager) Run(ctx context.Context) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	manager.alertUpdates = make(chan ps2alerts.Alert)
 	everyFifteenSeconds := time.NewTicker(15 * time.Second)
 	defer everyFifteenSeconds.Stop()
 
@@ -122,13 +127,10 @@ func (manager *Manager) Run(ctx context.Context) {
 				return
 			case character := <-manager.characterFactionLookups:
 				faction := manager.gameData.GetPlayerFaction(character)
-				if faction != 0 {
-					manager.characterFactionResults <- factionResult{CharacterID: character, FactionID: faction}
-				}
+				manager.characterFactionResults <- factionResult{CharacterID: character, FactionID: faction}
 			}
 		}
 	}()
-	manager.queryQueue = make(chan query)
 	manager.unavailable = make(chan struct{})
 	defer close(manager.unavailable)
 
@@ -143,7 +145,7 @@ func (manager *Manager) Run(ctx context.Context) {
 		case facilityControl := <-manager.facilityUpdates:
 			handleFacilityUpdate(manager, facilityControl)
 		case result := <-manager.characterFactionResults:
-			handleCharacterFactionResult(manager, result)
+			manager.players.factionUpdate(result.CharacterID, result.FactionID)
 		case e := <-manager.censusPushEvents:
 			switch event := e.(type) {
 			case event.ContinentLock:
@@ -178,9 +180,126 @@ func (manager *Manager) Run(ctx context.Context) {
 		}
 	}
 }
+func (m *Manager) handleFacilityControl(e event.FacilityControl) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleGainExperience(e event.GainExperience) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleMetagame(e event.MetagameEvent) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleVehicleDestroy(e event.VehicleDestroy) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleDeath(e event.Death) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleContinentLock(e event.ContinentLock) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleLogin(e event.PlayerLogin) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+func (m *Manager) handleLogout(e event.PlayerLogout) {
+	select {
+	case m.censusPushEvents <- e:
+	case <-m.unavailable:
+		return
+	}
+}
+
+type factionSaver interface {
+	SavePlayerFaction(ps2.CharacterID, ps2.FactionID)
+}
 
 // onlinePlayerStore holds the last known state of all online players
-type onlinePlayerStore map[ps2.CharacterID]onlinePlayerState
+type onlinePlayerStore struct {
+	players        map[ps2.CharacterID]onlinePlayerState
+	factionLookups chan<- ps2.CharacterID
+	saver          factionSaver
+}
+
+func (store *onlinePlayerStore) receivedEvent(id ps2.CharacterID, world ps2.WorldID, zone ps2.ZoneInstanceID, team ps2.FactionID, loadout ps2.LoadoutID, timestamp time.Time) {
+	if id == 0 {
+		return
+	}
+
+	if world == 0 {
+		slog.Warn(
+			"unusual player event; world should never be 0",
+			"world", world,
+			"timestamp", timestamp.Unix(),
+			"zone", zone,
+			"character", id,
+			"loadout", loadout,
+			"team", team,
+		)
+		return
+	}
+
+	p, found := store.players[id]
+	if timestamp.Before(p.lastSeen) {
+		return
+	}
+
+	if p.homeFaction == 0 && loadout != 0 {
+		p.homeFaction = ps2.LoadoutFaction(loadout)
+	}
+
+	if team != 0 {
+		p.team = team
+	}
+
+	if !found && p.homeFaction == 0 {
+		store.factionLookups <- id
+	}
+
+	if !p.saved && p.homeFaction != 0 {
+		p.saved = true
+		store.saver.SavePlayerFaction(id, p.homeFaction)
+		// m.gameData.SavePlayerFaction(e.CharacterID, p2.homeFaction)
+	}
+
+	store.players[id] = p
+}
+func (store *onlinePlayerStore) factionUpdate(id ps2.CharacterID, faction ps2.FactionID) {
+	if faction == 0 {
+		return
+	}
+	if p, found := store.players[id]; found {
+		p.homeFaction = faction
+		store.players[id] = p
+	}
+}
 
 type onlinePlayerState struct {
 	homeFaction ps2.FactionID // homeFaction is 0 until an event containing a ps2.ProfileID is seen, then saved
@@ -188,6 +307,7 @@ type onlinePlayerState struct {
 	world       ps2.WorldID
 	zone        ps2.ZoneInstanceID
 	lastSeen    time.Time // timestamp of last event mentioning this player
+	saved       bool      // track whether faction has been saved to database this session
 }
 
 // checkZone checks whether a zone should start being actively tracked.
@@ -271,9 +391,13 @@ func trackZone(manager *Manager, zone uniqueZone) {
 	cont := manager.gameData.GetContinent(zone.ZoneID())
 	if cont.ContinentID == 0 {
 		cont.ContinentID = zone.ZoneID()
+		cont.Name.Set(fmt.Sprintf("Zone-%s", zone.ZoneID()))
+		cont.Description.Set("Data was unavailable")
 	}
 	if w.WorldID == 0 {
 		w.WorldID = zone.WorldID
+		w.Name.Set(fmt.Sprintf("World-%s", zone.WorldID))
+		w.Description.Set("Data was unavailable")
 	}
 	manager.state.trackZone(w, zone.ZoneInstanceID, cont)
 }
@@ -282,35 +406,35 @@ func trackZone(manager *Manager, zone uniqueZone) {
 // it mostly just grabs fields from the event and sends them to a different facility control channel.
 func handleFacilityControl(m *Manager, e event.FacilityControl) {
 	update := internalFacilityUpdate{
-		faction:   e.NewFactionID,
-		world:     e.WorldID,
-		zone:      e.ZoneID,
-		facility:  e.FacilityID,
-		outfit:    e.OutfitID,
-		timestamp: e.Timestamp,
+		Faction:   e.NewFactionID,
+		World:     e.WorldID,
+		Zone:      e.ZoneID,
+		Facility:  e.FacilityID,
+		Outfit:    e.OutfitID,
+		Timestamp: e.Timestamp,
 	}
 	m.facilityUpdates <- update
 }
 
 type internalFacilityUpdate struct {
-	faction   ps2.FactionID
-	world     ps2.WorldID
-	zone      ps2.ZoneInstanceID
-	facility  ps2.FacilityID // should I use facility id instead?
-	outfit    ps2.OutfitID
-	timestamp time.Time // timestamp is the time of last known value, not necessarily when the territory flipped
+	Faction   ps2.FactionID
+	World     ps2.WorldID
+	Zone      ps2.ZoneInstanceID
+	Facility  ps2.FacilityID
+	Outfit    ps2.OutfitID
+	Timestamp time.Time // timestamp is the time of last known value, not necessarily when the territory flipped
 }
 
 // handleFacilityUpdate handles the internal parsed event changes that come from different sources
 func handleFacilityUpdate(manager *Manager, update internalFacilityUpdate) {
-	zoneID := uniqueZone{WorldID: update.world, ZoneInstanceID: update.zone}
+	zoneID := uniqueZone{WorldID: update.World, ZoneInstanceID: update.Zone}
 	zone := manager.state.getZoneptr(zoneID)
 	if zone == nil {
 		// skip untracked zones
 		// facility updates come in for zones like the tutorial all the time
 		return
 	}
-	facilityData := manager.gameData.GetFacility(update.facility)
+	facilityData := manager.gameData.GetFacility(update.Facility)
 	if facilityData.FacilityID == 0 {
 		slog.Debug("no facility data found", "update", update)
 		return
@@ -334,84 +458,6 @@ func handleFacilityUpdate(manager *Manager, update internalFacilityUpdate) {
 	}
 }
 
-func handleGainExperience(m *Manager, e event.GainExperience) {
-	p, found := m.players[e.CharacterID]
-	p.homeFaction = ps2.LoadoutFaction(e.LoadoutID)
-	p.zone = e.ZoneID
-	p.team = e.TeamID
-	p.lastSeen = e.Timestamp
-	m.players[e.CharacterID] = p
-	if !found {
-		if p.homeFaction == 0 {
-			slog.Debug("event missing faction for loadout", "event", e)
-			return
-		}
-		m.gameData.SavePlayerFaction(e.CharacterID, p.homeFaction)
-	}
-}
-func handleVehicleDestroy(m *Manager, e event.VehicleDestroy) {
-	if e.AttackerCharacterID != 0 {
-		p1 := m.players[e.AttackerCharacterID]
-		if e.Timestamp.After(p1.lastSeen) {
-			p1.zone = e.ZoneID
-			p1.team = e.TeamID
-			p1.world = e.WorldID
-			p1.lastSeen = e.Timestamp
-			m.players[e.AttackerCharacterID] = p1
-		}
-	}
-
-	// p2 := m.onlinePlayers[e.CharacterID]
-	// if e.Timestamp.After(p2.lastSeen) {
-	// 	p2.zone = e.ZoneID
-	// 	p2.team = e.TeamID
-	// 	p2.world = e.WorldID
-	// 	p2.lastSeen = e.Timestamp
-	// 	m.onlinePlayers[e.CharacterID] = p2
-	// }
-}
-func handleDeath(m *Manager, e event.Death) {
-	if e.AttackerCharacterID != 0 {
-		p1, found := m.players[e.AttackerCharacterID]
-		if e.Timestamp.After(p1.lastSeen) {
-			p1.homeFaction = ps2.LoadoutFaction(e.AttackerLoadoutID)
-			p1.zone = e.ZoneID
-			if e.AttackerTeamID != 0 {
-				p1.team = e.AttackerTeamID
-			}
-			p1.world = e.WorldID
-			p1.lastSeen = e.Timestamp
-			m.players[e.AttackerCharacterID] = p1
-			if !found {
-				if p1.homeFaction == 0 {
-					slog.Debug("event missing faction for loadout", "event", e)
-				} else {
-					m.gameData.SavePlayerFaction(e.AttackerCharacterID, p1.homeFaction)
-				}
-			}
-		}
-	}
-
-	p2, found := m.players[e.CharacterID]
-	if e.Timestamp.After(p2.lastSeen) {
-		p2.homeFaction = ps2.LoadoutFaction(e.CharacterLoadoutID)
-		p2.zone = e.ZoneID
-		p2.team = e.TeamID
-		p2.world = e.WorldID
-		p2.lastSeen = e.Timestamp
-		if p2.team == 0 {
-			slog.Debug("team missing for death event", "event", e)
-		}
-		m.players[e.CharacterID] = p2
-		if !found {
-			if p2.homeFaction == 0 {
-				slog.Debug("event missing faction for loadout", "event", e)
-				return
-			}
-			m.gameData.SavePlayerFaction(e.CharacterID, p2.homeFaction)
-		}
-	}
-}
 func handleMetagame(ctx context.Context, manager *Manager, e event.MetagameEvent, ch chan<- ps2alerts.Alert) {
 	eventData := manager.gameData.GetEvent(e.MetagameEventID)
 	switch e.MetagameEventState {
@@ -430,8 +476,10 @@ func handleMetagame(ctx context.Context, manager *Manager, e event.MetagameEvent
 		if event == nil {
 			return
 		}
-		//todo: finalize score
 		//todo: emit event update
+		event.Score.NC = e.FactionNC
+		event.Score.VS = e.FactionVS
+		event.Score.TR = e.FactionTR
 		event.Ended = &e.Timestamp
 	}
 	if ps2.IsTerritoryAlert(eventData.MetagameEventID) {
@@ -473,68 +521,56 @@ func handleLock(manager *Manager, e event.ContinentLock) {
 }
 
 func handleLogin(m *Manager, e event.PlayerLogin) {
-	p := m.players[e.CharacterID]
-	p.world = e.WorldID
-	p.lastSeen = e.Timestamp
-	m.players[e.CharacterID] = p
-	select {
-	case m.characterFactionLookups <- e.CharacterID:
-	case <-m.unavailable:
-		return
-	}
+	m.players.receivedEvent(
+		e.CharacterID,
+		e.WorldID,
+		0,
+		0,
+		0,
+		e.Timestamp,
+	)
 
 }
 func handleLogout(m *Manager, e event.PlayerLogout) {
-	delete(m.players, e.CharacterID)
+	delete(m.players.players, e.CharacterID)
 }
-func (m *Manager) handleFacilityControl(e event.FacilityControl) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
+func handleGainExperience(m *Manager, e event.GainExperience) {
+	m.players.receivedEvent(
+		e.CharacterID,
+		e.WorldID,
+		e.ZoneID,
+		e.TeamID,
+		e.LoadoutID,
+		e.Timestamp,
+	)
 }
-func (m *Manager) handleGainExperience(e event.GainExperience) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
+func handleVehicleDestroy(m *Manager, e event.VehicleDestroy) {
+	m.players.receivedEvent(
+		e.AttackerCharacterID,
+		e.WorldID,
+		e.ZoneID,
+		e.AttackerTeamID,
+		e.AttackerLoadoutID,
+		e.Timestamp,
+	)
 }
-func (m *Manager) handleMetagame(e event.MetagameEvent) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
-}
-func (m *Manager) handleVehicleDestroy(e event.VehicleDestroy) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
-}
-func (m *Manager) handleDeath(e event.Death) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
-}
-func (m *Manager) handleContinentLock(e event.ContinentLock) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
-}
-func (m *Manager) handleLogin(e event.PlayerLogin) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
+func handleDeath(m *Manager, e event.Death) {
+	m.players.receivedEvent(
+		e.AttackerCharacterID,
+		e.WorldID,
+		e.ZoneID,
+		e.AttackerTeamID,
+		e.AttackerLoadoutID,
+		e.Timestamp,
+	)
+	m.players.receivedEvent(
+		e.CharacterID,
+		e.WorldID,
+		e.ZoneID,
+		e.TeamID,
+		e.CharacterLoadoutID,
+		e.Timestamp,
+	)
 }
 
 // popCounter maintains a faction population counter, where the index is a ps2.FactionID.
@@ -544,14 +580,14 @@ func countPlayers(m *Manager) {
 	worldCount := make(map[ps2.WorldID]popCounter)
 	zoneCount := make(map[uniqueZone]popCounter)
 
-	for id, player := range m.players {
+	for id, player := range m.players.players {
 
 		// if we haven't seen any events for a player in more than X hours,
 		// then we will assume that there is some kind of error in receiving events like logouts
 		// and we'll exclude the player from the population counts.
 		if time.Since(player.lastSeen) > 2*time.Hour {
 			// if they were still online they'll just get added back to tracking the next time an event comes in
-			delete(m.players, id)
+			delete(m.players.players, id)
 			continue
 		}
 		wcount := worldCount[player.world]
@@ -586,14 +622,6 @@ func removeStaleEvents(m *Manager) {
 	}
 }
 
-func (m *Manager) handleLogout(e event.PlayerLogout) {
-	select {
-	case m.censusPushEvents <- e:
-	case <-m.unavailable:
-		return
-	}
-}
-
 func handlePS2AlertsResponse(manager *Manager, ps2aInstance ps2alerts.Alert) {
 	id := ps2aInstance.InstanceID
 	event := manager.alerts[id]
@@ -625,18 +653,6 @@ func handlePS2AlertsResponse(manager *Manager, ps2aInstance ps2alerts.Alert) {
 	// }
 }
 
-func handleCharacterFactionResult(manager *Manager, result factionResult) {
-	player, found := manager.players[result.CharacterID]
-	if !found {
-		// there could exist a valid condition where a faction lookup succeeds after a character logs out,
-		// but other cases would probably be a bug
-		slog.Debug("handling faction result for character that's not being tracked", "character", result.CharacterID)
-		return
-	}
-	player.homeFaction = result.FactionID
-	manager.players[result.CharacterID] = player
-}
-
 func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState) {
 	worldZones := m.state.listZones()
 	for world, zones := range worldZones {
@@ -650,7 +666,7 @@ func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState
 			defer stop()
 			zm, err := census.GetMap(ctx, m.census, w, zones...)
 			if err != nil {
-				slog.Error("failed getting map state from census", "error", err, "zones", zones, "world", w)
+				slog.Warn("failed getting map state from census", "error", err, "zones", zones, "world", w)
 				return
 			}
 			for _, z := range zm {
