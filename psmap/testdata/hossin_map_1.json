@@ -1,0 +1,354 @@
+[
+    {
+        "region_id": "4101",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4133",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4261",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4102",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4230",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4134",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4262",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4103",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4104",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4105",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4106",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4170",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4107",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4171",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4108",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4172",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4109",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4173",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4110",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4111",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4112",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4240",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4113",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4114",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4115",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4116",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4180",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4117",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4181",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4118",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4182",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4119",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4183",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4120",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4121",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4122",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4250",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4123",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4124",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4125",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4126",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4190",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4127",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4191",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4130",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4131",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4132",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4260",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4135",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4263",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4136",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4264",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4200",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4137",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4265",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4201",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4138",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4266",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4202",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4139",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4267",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4140",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4268",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4141",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4269",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4142",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4270",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4143",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4271",
+        "faction_id": "1"
+    },
+    {
+        "region_id": "4150",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4151",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4152",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4153",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4160",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4161",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4162",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4163",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4192",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4193",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4203",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4210",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4211",
+        "faction_id": "0"
+    },
+    {
+        "region_id": "4212",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4213",
+        "faction_id": "3"
+    },
+    {
+        "region_id": "4220",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4221",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4222",
+        "faction_id": "2"
+    },
+    {
+        "region_id": "4223",
+        "faction_id": "0"
+    }
+]
