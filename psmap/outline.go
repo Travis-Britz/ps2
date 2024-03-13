@@ -7,7 +7,6 @@ import (
 const mapDimensions = 8192
 
 type Point interface {
-
 	// Point returns an x,y coordinate on a plane where top left is 0,0.
 	// This correlates to the SVG coordinate system and most computer graphics.
 	Point() (float64, float64)
@@ -177,6 +176,8 @@ func (p point) Point() (x float64, y float64) {
 	center_y := float64(-1*p.Hex.Y)*height*0.75 - height/2
 
 	// our corner indexing starts from the top corner of a hex and goes counter-clockwise.
+	// the math might seem weird if you try to verify or recreate it because we're switching between different coordinate systems.
+	// honestly I just flipped signs until the tiles lined up with a map image.
 	angle_deg := 60*p.corner + 90
 	angle_rad := (math.Pi / 180) * float64(angle_deg)
 
@@ -189,7 +190,6 @@ func (p point) Point() (x float64, y float64) {
 	y = y + mapDimensions/2
 
 	return x, y
-
 }
 
 // Hex represents the position of a single map hex tile.
