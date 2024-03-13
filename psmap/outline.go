@@ -28,6 +28,9 @@ type Point interface {
 // https://census.daybreakgames.com/get/ps2:v2/map_hex?c:limit=5000&map_region_id=2419&c:show=x,y
 // https://census.daybreakgames.com/get/ps2:v2/zone?c:lang=en&zone_id=2&c:show=hex_size
 func Outline(hexes []Hex, width int) (path []Point) {
+	if len(hexes) == 0 {
+		return nil
+	}
 	size := widthToSize(width)
 	region := make(map[Hex]bool)
 	min_x := 999
