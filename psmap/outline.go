@@ -55,9 +55,9 @@ func Outline(hexes []Hex, width int) (path []Point) {
 		corner: 1,
 		size:   size,
 	}
-	path = []Point{start}
 	// We know the first move is always left because we start at the leftmost hex corner 1.
 	left, right := fork(start)
+	path = []Point{start, left}
 	for current := left; current != start; {
 		left, right = fork(current)
 		// At every new node we try to turn right first.
