@@ -52,6 +52,7 @@ func Summarize(mapData Map, regions State) (summary Summary, err error) {
 		Territory:     map[ps2.FactionID]float32{},
 		FacilityCount: map[ps2.FactionID]int{},
 		CutoffCount:   map[ps2.FactionID]int{},
+		Cutoff:        map[ps2.RegionID]bool{},
 	}
 	lattice := make(map[ps2.FacilityID]*facilityRegion) // lattice is the graph of facility connections
 	regionIdx := make(map[ps2.RegionID]ps2.FacilityID)  // regionIdx maps RegionIDs to FacilityIDs
@@ -74,6 +75,9 @@ func Summarize(mapData Map, regions State) (summary Summary, err error) {
 		}
 		lattice[reg.Facility()] = r
 		summary.CutoffCount[r.Owner]++
+		if r.Owner != none {
+			summary.Cutoff[reg.Region()] = true
+		}
 
 		regionIdx[reg.Region()] = reg.Facility()
 		if reg.FacilityType() == ps2.Warpgate {
@@ -110,6 +114,7 @@ func Summarize(mapData Map, regions State) (summary Summary, err error) {
 		// start.Cutoff = false
 		visited[start.FacilityID] = true
 		summary.CutoffCount[start.Owner]--
+		delete(summary.Cutoff, start.RegionID)
 		for current, more := start, true; more; current, more = frontier.Pop() {
 			for _, next := range current.Links {
 				if visited[next.FacilityID] {
@@ -118,7 +123,7 @@ func Summarize(mapData Map, regions State) (summary Summary, err error) {
 				if next.Owner == current.Owner {
 					frontier.Push(next)
 					visited[next.FacilityID] = true
-					// next.Cutoff = false
+					delete(summary.Cutoff, next.RegionID)
 					summary.FacilityCount[next.Owner]++
 					summary.CutoffCount[next.Owner]--
 				}
@@ -162,8 +167,12 @@ type Summary struct {
 	// Territory is the percentage of territory owned by a faction. The result should be cast to an int (floored) to align with the in-game numbers.
 	Territory map[ps2.FactionID]float32
 
+	Cutoff map[ps2.RegionID]bool
+
 	// Status is the locked/unlocked status of the continent.
 	Status Status
+
+	//todo: owning faction for locked continents?
 }
 
 type Status uint8
