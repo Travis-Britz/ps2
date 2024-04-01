@@ -2,7 +2,6 @@ package psmap_test
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"strings"
 	"testing"
@@ -88,7 +87,6 @@ func TestCalculatePercentages(t *testing.T) {
 		if err != nil {
 			t.Fatal(name, err)
 		}
-		log.Printf("%+v\n\n", got)
 		if got.Status != expected.Status {
 			t.Errorf("%s: expected %s; got %s", name, expected.Status, got.Status)
 		}
