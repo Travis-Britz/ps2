@@ -17,6 +17,52 @@ type ExperienceAwardTypeID int
 type SkillID int
 type VehicleID uint16
 
+func (v VehicleID) String() string {
+	switch v {
+	case Flash:
+		return "Flash"
+	case Sunderer:
+		return "Sunderer"
+	case Lightning:
+		return "Lightning"
+	case Magrider:
+		return "Magrider"
+	case Vanguard:
+		return "Vanguard"
+	case Prowler:
+		return "Prowler"
+	case Scythe:
+		return "Scythe"
+	case Reaver:
+		return "Reaver"
+	case Mosquito:
+		return "Mosquito"
+	case Liberator:
+		return "Liberator"
+	case Galaxy:
+		return "Galaxy"
+	case Harasser:
+		return "Harasser"
+	case Valkyrie:
+		return "Valkyrie"
+	case ANT:
+		return "ANT"
+	case Colossus:
+		return "Colossus"
+	case Bastion:
+		return "Bastion"
+	case Javelin:
+		return "Javelin"
+	case Dervish:
+		return "Dervish"
+	case Chimera:
+		return "Chimera"
+	case Corsair:
+		return "Corsair"
+	default:
+		return fmt.Sprintf("%d", int(v))
+	}
+}
 func (v VehicleID) GoString() string {
 	switch v {
 	case Flash:
@@ -136,13 +182,21 @@ type OutfitID int64
 // It is more of a conceptual type of ID than a direct implementation.
 // It does not exist as a distinct type anywhere in the game or in the census API,
 // but it is effectively the "true type" of ID given in census events.
-//
-// ContinentID is the type that should be used when storing/querying a local database.
+// It is sort of a superposition of ZoneID and GeometryID;
+// it is both at the same time.
+// Think of the ContinentID type as the answer to the question:
+// "Where is it appropriate to use this ID?"
 //
 // There is some complexity between ContinentID, ZoneID, ZoneInstanceID, and GeometryID.
 // The code is complex because the reality is complex.
 // The biggest problem is terminology,
 // but also because there are at least three representations of Zone ID used by the game.
+//
+// ContinentID is the type that should be used when storing/querying a local database.
+// Your schema for a zones table should include it:
+// zone_id(unique),geometry_id(not unique),continent_id(unique),name,dynamic(bool),...
+// When a player event is observed,
+// convert the ZoneInstanceID to a ContinentID to determine the map (Amerish, Koltyr, etc.)
 //
 // The census API zone collection is unique by zone_id,
 // but it is not technically unique by geometry_id.
@@ -172,7 +226,7 @@ type OutfitID int64
 // A ContinentID cannot, for instance, be used to query the census API because we don't know whether to query by zone_id or geometry_id.
 // ZoneInstanceID can convert itself to ZoneID, GeometryID, or ContinentID because it has the dynamic property embedded.
 // ContinentID and ZoneID can be cast to ZoneInstanceID if the zone is known to be static ("dynamic" = false).
-// GeometyrID can only be converted to ZoneInstanceID if the ephemeral instance counter is known.
+// GeometryID can only be converted to ZoneInstanceID if the ephemeral instance counter is known.
 type ContinentID uint16
 
 func (c ContinentID) String() string {
@@ -294,6 +348,9 @@ func (id ZoneInstanceID) DefinitionID() any {
 
 func (id ZoneInstanceID) GoString() string {
 	if id.IsInstanced() {
+		// This looks ugly,
+		// but I wanted correct Go code produced for GoString
+		// while also showing the type of the ID given.
 		return fmt.Sprintf("ps2.ZoneInstanceID(%d<<16|uint32(ps2.GeometryID(%d)))", id.Instance(), id.DefinitionID())
 	}
 	return fmt.Sprintf("ps2.ZoneInstanceID(%s)", id.ZoneID().GoString())
@@ -441,11 +498,12 @@ type ItemTypeID int
 
 type ItemCategoryID int
 
-// InstanceID is an incrementing ID counter for a metagame event,
-// and is unique within a world.
+// InstanceID uniquely identifies a metagame event (alert) for a world.
+// Each world has its own incrementing event ID.
 type InstanceID uint32
 
-// MetagameEventInstanceID represents a unique metagame event.
+// MetagameEventInstanceID uniquely identifies a metagame event (alert) across worlds,
+// e.g. "Emerald Indar Liberation 2024-03-05 13:49:00".
 //
 // https://census.daybreakgames.com/get/ps2:v2/world_event?type=METAGAME
 type MetagameEventInstanceID struct {
@@ -525,6 +583,47 @@ func (t MapHexType) GoString() string {
 
 type RewardCurrencyID int
 type FacilityTypeID int
+
+func (f FacilityTypeID) String() string {
+	switch f {
+	case DefaultFacility:
+		return "DefaultFacility"
+	case AmpStation:
+		return "AmpStation"
+	case Biolab:
+		return "Biolab"
+	case Techplant:
+		return "Techplant"
+	case LargeOutpost:
+		return "LargeOutpost"
+	case SmallOutpost:
+		return "SmallOutpost"
+	case Warpgate:
+		return "Warpgate"
+	case Interlink:
+		return "Interlink"
+	case ConstructionOutpost:
+		return "ConstructionOutpost"
+	case RelicOutpost:
+		return "RelicOutpost"
+	case ContainmentSite:
+		return "ContainmentSite"
+	case Trident:
+		return "Trident"
+	case Seapost:
+		return "Seapost"
+	case LargeOutpostCTF:
+		return "LargeOutpostCTF"
+	case SmallOutpostCTF:
+		return "SmallOutpostCTF"
+	case AmpStationCTF:
+		return "AmpStationCTF"
+	case ConstructionOutpostCTF:
+		return "ConstructionOutpostCTF"
+	default:
+		return strconv.Itoa(int(f))
+	}
+}
 
 type CurrencyID int
 type Currency struct {
@@ -610,6 +709,61 @@ func (l LoadoutID) GoString() string {
 		return "ps2.MaxNSO"
 	default:
 		return fmt.Sprintf("ps2.LoadoutID(%d)", int(l))
+	}
+}
+
+func (l LoadoutID) String() string {
+	switch l {
+	case InfiltratorNC:
+		return "InfiltratorNC"
+	case LightAssaultNC:
+		return "LightAssaultNC"
+	case MedicNC:
+		return "MedicNC"
+	case EngineerNC:
+		return "EngineerNC"
+	case HeavyAssaultNC:
+		return "HeavyAssaultNC"
+	case MaxNC:
+		return "MaxNC"
+	case InfiltratorTR:
+		return "InfiltratorTR"
+	case LightAssaultTR:
+		return "LightAssaultTR"
+	case MedicTR:
+		return "MedicTR"
+	case EngineerTR:
+		return "EngineerTR"
+	case HeavyAssaultTR:
+		return "HeavyAssaultTR"
+	case MaxTR:
+		return "MaxTR"
+	case InfiltratorVS:
+		return "InfiltratorVS"
+	case LightAssaultVS:
+		return "LightAssaultVS"
+	case MedicVS:
+		return "MedicVS"
+	case EngineerVS:
+		return "EngineerVS"
+	case HeavyAssaultVS:
+		return "HeavyAssaultVS"
+	case MaxVS:
+		return "MaxVS"
+	case InfiltratorNSO:
+		return "InfiltratorNSO"
+	case LightAssaultNSO:
+		return "LightAssaultNSO"
+	case MedicNSO:
+		return "MedicNSO"
+	case EngineerNSO:
+		return "EngineerNSO"
+	case HeavyAssaultNSO:
+		return "HeavyAssaultNSO"
+	case MaxNSO:
+		return "MaxNSO"
+	default:
+		return fmt.Sprintf("%d", int(l))
 	}
 }
 
