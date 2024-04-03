@@ -29,7 +29,7 @@ func GetCharacterIDByName(ctx context.Context, client *Client, e ps2.Environment
 		return 0, fmt.Errorf("census.GetCharacterIDByName: %w for \"%s\"", err, name)
 	}
 	if len(r.CharacterNameList) == 0 {
-		return 0, noResults{q: name}
+		return 0, noResultsError{q: name}
 	}
 	return r.CharacterNameList[0].CharacterID, nil
 
