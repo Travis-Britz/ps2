@@ -52,8 +52,12 @@ func (s Subscribe) command() command {
 		LogicalAndCharactersWithWorlds: &s.LogicalAndCharactersWithWorlds,
 	}
 
-	// When Events, Worlds, or Characters are left nil (the default) we will not explicitly set them.
-	// However, when they are explicitly set to a zero-length slice we will take that as the special case to include all.
+	// We treat nil and zero-length slices differently for Events, Worlds, or Characters.
+	// This feels like a disgusting hack because empty slices and nil slices are expected to behave the same by most Go code.
+	// However, it allows the Subscribe struct to function as expected from a user's perspective.
+	// When those fields are left nil (the default) the resulting command will omit them.
+	// When they are explicitly set to a zero-length slice we will take that as the special case to include "all".
+
 	for _, eid := range s.ExperienceIDs {
 		c.EventNames = append(c.EventNames, fmt.Sprintf("GainExperience_experience_id_%d", eid))
 	}
