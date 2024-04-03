@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/Travis-Britz/ps2/census"
 	"github.com/Travis-Britz/ps2/event"
 	"github.com/Travis-Britz/ps2/ps2alerts"
+	"github.com/Travis-Britz/ps2/psmap"
 )
 
 const (
@@ -36,11 +36,14 @@ type gameDataStore interface {
 	GetFacility(ps2.FacilityID) census.Facility
 	GetPlayerFaction(ps2.CharacterID) ps2.FactionID
 	SavePlayerFaction(ps2.CharacterID, ps2.FactionID)
+	GetFacilityRegion(ps2.FacilityID) ps2.RegionID
+	GetMap(id ps2.ContinentID) (psmap.Map, error)
 }
 
 func New(db gameDataStore, censusClient *census.Client) *Manager {
 	factionLookups := make(chan ps2.CharacterID, 10)
 	m := &Manager{
+		logf:         func(string, ...any) {},
 		gameData:     db,
 		census:       censusClient,
 		alerts:       make(map[ps2.MetagameEventInstanceID]*EventState),
@@ -52,7 +55,6 @@ func New(db gameDataStore, censusClient *census.Client) *Manager {
 		},
 		censusPushEvents:        make(chan event.Typer, 5000),
 		mapUpdates:              make(chan census.ZoneState, 10),
-		facilityUpdates:         make(chan internalFacilityUpdate, 500),
 		zoneLookups:             make(map[uniqueZone]time.Time),
 		characterFactionResults: make(chan factionResult, 10),
 		characterFactionLookups: factionLookups,
@@ -72,21 +74,25 @@ func New(db gameDataStore, censusClient *census.Client) *Manager {
 // Manager maintains knowledge of worlds, zones, events, and population.
 // It starts workers to keep itself updated.
 type Manager struct {
-	mu                      sync.Mutex
-	gameData                gameDataStore
-	census                  *census.Client
-	alerts                  map[ps2.MetagameEventInstanceID]*EventState
-	state                   GlobalState
-	players                 onlinePlayerStore
-	alertUpdates            chan ps2alerts.Alert
-	mapUpdates              chan census.ZoneState
-	facilityUpdates         chan internalFacilityUpdate
-	censusPushEvents        chan event.Typer
-	zoneLookups             map[uniqueZone]time.Time // zoneLookups is a cache of queried zone IDs
-	characterFactionResults chan factionResult
-	characterFactionLookups chan ps2.CharacterID
-	queryQueue              chan query    // queryQueue is a channel of external requests to access the Manager
-	unavailable             chan struct{} // unavailable is closed when the manager shuts down
+	mu                       sync.Mutex
+	logf                     func(string, ...any)
+	gameData                 gameDataStore
+	census                   *census.Client
+	alerts                   map[ps2.MetagameEventInstanceID]*EventState
+	state                    GlobalState
+	players                  onlinePlayerStore
+	alertUpdates             chan ps2alerts.Alert
+	mapUpdates               chan census.ZoneState
+	censusPushEvents         chan event.Typer
+	zoneLookups              map[uniqueZone]time.Time // zoneLookups is a cache of queried zone IDs
+	characterFactionResults  chan factionResult
+	characterFactionLookups  chan ps2.CharacterID
+	queryQueue               chan query    // queryQueue is a channel of external requests to access the Manager
+	unavailable              chan struct{} // unavailable is closed when the manager shuts down
+	populationHandlers       []func(PopulationTotal)
+	territoryChangeHandlers  []func(TerritoryChange)
+	zoneStatusChangeHandlers []func(ZoneStatusChange)
+	eventUpdateHandlers      []func(EventState)
 }
 
 // AttachHandlers attaches the required handlers to client.
@@ -108,18 +114,11 @@ func (manager *Manager) Run(ctx context.Context) {
 	defer manager.mu.Unlock()
 	everyFifteenSeconds := time.NewTicker(15 * time.Second)
 	defer everyFifteenSeconds.Stop()
+	manager.unavailable = make(chan struct{})
+	defer close(manager.unavailable)
 
-	go func() {
-		for {
-			getMapData(ctx, manager, manager.mapUpdates)
-			updateActiveEventInstances(ctx, manager.alertUpdates)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Minute):
-			}
-		}
-	}()
+	go getMapData(ctx, manager, manager.mapUpdates)
+	go updateActiveEventInstances(ctx, manager.alertUpdates)
 	go func() {
 		for {
 			select {
@@ -131,8 +130,6 @@ func (manager *Manager) Run(ctx context.Context) {
 			}
 		}
 	}()
-	manager.unavailable = make(chan struct{})
-	defer close(manager.unavailable)
 
 	for {
 		select {
@@ -142,8 +139,6 @@ func (manager *Manager) Run(ctx context.Context) {
 			handlePS2AlertsResponse(manager, alertData)
 		case mapData := <-manager.mapUpdates:
 			handleMap(manager, mapData)
-		case facilityControl := <-manager.facilityUpdates:
-			handleFacilityUpdate(manager, facilityControl)
 		case result := <-manager.characterFactionResults:
 			manager.players.factionUpdate(result.CharacterID, result.FactionID)
 		case e := <-manager.censusPushEvents:
@@ -161,7 +156,7 @@ func (manager *Manager) Run(ctx context.Context) {
 				// handleMetagame will spawn a goroutine to fill data from ps2alerts though, which could also fail.
 				// if the census api fails, the alert might not be initialized until one of the polls to /active on ps2alerts,
 				// assuming their site is functioning and it's a territory alert.
-				handleMetagame(ctx, manager, event, manager.alertUpdates)
+				handleMetagame(ctx, manager, event)
 			case event.Death:
 				handleDeath(manager, event)
 			case event.VehicleDestroy:
@@ -254,15 +249,15 @@ func (store *onlinePlayerStore) receivedEvent(id ps2.CharacterID, world ps2.Worl
 	}
 
 	if world == 0 {
-		slog.Warn(
-			"unusual player event; world should never be 0",
-			"world", world,
-			"timestamp", timestamp.Unix(),
-			"zone", zone,
-			"character", id,
-			"loadout", loadout,
-			"team", team,
-		)
+		// slog.Warn(
+		// 	"unusual player event; world should never be 0",
+		// 	"world", world,
+		// 	"timestamp", timestamp.Unix(),
+		// 	"zone", zone,
+		// 	"character", id,
+		// 	"loadout", loadout,
+		// 	"team", team,
+		// )
 		return
 	}
 
@@ -292,6 +287,7 @@ func (store *onlinePlayerStore) receivedEvent(id ps2.CharacterID, world ps2.Worl
 	p.lastSeen = timestamp
 	store.players[id] = p
 }
+
 func (store *onlinePlayerStore) factionUpdate(id ps2.CharacterID, faction ps2.FactionID) {
 	if faction == 0 {
 		return
@@ -336,7 +332,7 @@ func checkZone(ctx context.Context, manager *Manager, zone uniqueZone) {
 		defer stop()
 		zm, err := census.GetMap(ctx, manager.census, zone.WorldID, zone.ZoneInstanceID)
 		if err != nil {
-			slog.Error("zone map lookup failed", "error", err, "zone", zone)
+			// slog.Error("zone map lookup failed", "error", err, "zone", zone)
 			return
 		}
 		for _, z := range zm {
@@ -355,31 +351,26 @@ func handleMap(manager *Manager, mapData census.ZoneState) {
 
 	zone := manager.state.getZoneptr(id)
 	if zone == nil {
-		slog.Debug("returned zone pointer was nil; zone should have been initialized already", "id", id, "manager", manager, "map_data", mapData)
 		return
 	}
-
-	// check for a lock state change on the map
-	if zone.LastLock != nil && !mapData.IsLocked() {
-		emitContinentUnlock(manager, continentUnlock{mapData.WorldID, mapData.ZoneID()})
+	for _, region := range mapData.Regions {
+		zone.Regions[region.RegionID] = region.FactionID
 	}
-
-	if mapData.IsUnstable() {
-		zone.ContinentState = unstable
-	} else if mapData.IsLocked() {
-		zone.ContinentState = locked
-	} else {
-		zone.ContinentState = unlocked
+	zone.MapTimestamp = time.Now()
+	mapp, err := manager.gameData.GetMap(id.ZoneID())
+	if err != nil {
+		return
 	}
-	//todo: re-implement map update timestamps
-	zone.Regions = make([]RegionState, 0, len(mapData.Regions))
-	for _, regionData := range mapData.Regions {
-		zone.Regions = append(zone.Regions, RegionState{
-			Region:  regionData.RegionID,
-			Faction: regionData.FactionID,
-		})
+	summary, err := psmap.Summarize(mapp, zone.Regions)
+	if err != nil {
+		return
 	}
-	zone.MapTimestamp = mapData.Timestamp
+	emitZoneStateChange(manager, id, summary.Status)
+	zone.ContinentState = summary.Status
+	zone.Cutoff = summary.Cutoff
+	if zone.ContinentState != psmap.Locked {
+		emitTerritoryChange(manager, id, zone.Regions, zone.Cutoff)
+	}
 }
 
 // trackZone checks if a zone is being tracked and fills zone data if it's not.
@@ -387,7 +378,7 @@ func trackZone(manager *Manager, zone uniqueZone) {
 	if manager.state.isTracking(zone) {
 		return
 	}
-	slog.Debug("creating state tracker during runtime; this should have happened during initialization", "world_id", zone.WorldID)
+	// manager.logf("creating state tracker during runtime; this should have happened during initialization", "world_id", zone.WorldID)
 	w := manager.gameData.GetWorld(zone.WorldID)
 	cont := manager.gameData.GetContinent(zone.ZoneID())
 	if cont.ContinentID == 0 {
@@ -403,66 +394,91 @@ func trackZone(manager *Manager, zone uniqueZone) {
 	manager.state.trackZone(w, zone.ZoneInstanceID, cont)
 }
 
-// handleFacilityControl specifically handles push events from the websocket connection.
-// it mostly just grabs fields from the event and sends them to a different facility control channel.
-func handleFacilityControl(m *Manager, e event.FacilityControl) {
-	update := internalFacilityUpdate{
-		Faction:   e.NewFactionID,
-		World:     e.WorldID,
-		Zone:      e.ZoneID,
-		Facility:  e.FacilityID,
-		Outfit:    e.OutfitID,
-		Timestamp: e.Timestamp,
+// handleFacilityControl handles push events from the websocket connection.
+func handleFacilityControl(manager *Manager, e event.FacilityControl) {
+	// for now we don't care about facility defense events
+	if e.NewFactionID == e.OldFactionID {
+		return
 	}
-	m.facilityUpdates <- update
-}
-
-type internalFacilityUpdate struct {
-	Faction   ps2.FactionID
-	World     ps2.WorldID
-	Zone      ps2.ZoneInstanceID
-	Facility  ps2.FacilityID
-	Outfit    ps2.OutfitID
-	Timestamp time.Time // timestamp is the time of last known value, not necessarily when the territory flipped
-}
-
-// handleFacilityUpdate handles the internal parsed event changes that come from different sources
-func handleFacilityUpdate(manager *Manager, update internalFacilityUpdate) {
-	zoneID := uniqueZone{WorldID: update.World, ZoneInstanceID: update.Zone}
+	zoneID := uniqueZone{WorldID: e.WorldID, ZoneInstanceID: e.ZoneID}
 	zone := manager.state.getZoneptr(zoneID)
 	if zone == nil {
 		// skip untracked zones
 		// facility updates come in for zones like the tutorial all the time
 		return
 	}
-	facilityData := manager.gameData.GetFacility(update.Facility)
-	if facilityData.FacilityID == 0 {
-		slog.Debug("no facility data found", "update", update)
+	regionID := manager.gameData.GetFacilityRegion(e.FacilityID)
+	if regionID == 0 {
+		return
+	}
+	zone.Regions[regionID] = e.NewFactionID
+	mapp, err := manager.gameData.GetMap(zoneID.ZoneID())
+	if err != nil {
+		return
+	}
+	summary, err := psmap.Summarize(mapp, zone.Regions)
+	if err != nil {
 		return
 	}
 
-	// facility change events for warpgates happen on continent lock, unlock, and rotation
-	if ps2.Warpgate == facilityData.FacilityType {
-		// if the last change was more than 5 minutes before the timestamp
-		// then emit an unlock message
-		//
-		// if the zone was unlocked
-		// if the last change was more than 5 minutes before the timestamp
-		// then emit a warpgate rotation message
-		if zone.ContinentState == locked {
-			zone.ContinentState = unstable
-			// i had a reason for checking if the map timestamp was older than 5 minutes but i forgot what it
-			// if zone.MapTimestamp.Before(time.Now().Add(time.Minute * -5)) {
-			// 	emitContinentUnlock(manager, continentUnlock{WorldID: update.world, ContinentID: update.zone.ZoneID()})
-			// }
+	// check for a state change
+	if zone.ContinentState != summary.Status {
+		emitZoneStateChange(manager, zoneID, summary.Status)
+
+		// if the old state was locked then territories from the last owner won't emit facility control events
+		if psmap.Locked == zone.ContinentState {
+			// this check will emit two events because it triggers during warpgate flips,
+			// but that shouldn't matter
+			unflipped := map[ps2.RegionID]ps2.FactionID{}
+			for r, f := range zone.Regions {
+				if f == e.OldFactionID {
+					unflipped[r] = f
+				}
+			}
+			emitTerritoryChange(
+				manager,
+				zoneID,
+				unflipped,
+				summary.Cutoff,
+			)
+		}
+	}
+
+	zone.ContinentState = summary.Status
+	zone.Cutoff = summary.Cutoff
+	zone.MapTimestamp = e.Timestamp
+
+	emitTerritoryChange(
+		manager,
+		zoneID,
+		map[ps2.RegionID]ps2.FactionID{regionID: e.NewFactionID},
+		summary.Cutoff,
+	)
+
+	event := zone.Event
+	if event != nil {
+		if event.IsTerritory && event.Ended == nil {
+			event.Score.VS = float64(summary.Territory[VS])
+			event.Score.NC = float64(summary.Territory[NC])
+			event.Score.TR = float64(summary.Territory[TR])
+			// emit territory percents
+			emitEventUpdate(manager, (*event).Clone())
 		}
 	}
 }
 
-func handleMetagame(ctx context.Context, manager *Manager, e event.MetagameEvent, ch chan<- ps2alerts.Alert) {
-	eventData := manager.gameData.GetEvent(e.MetagameEventID)
+func handleMetagame(_ context.Context, manager *Manager, e event.MetagameEvent) {
 	switch e.MetagameEventState {
 	case ps2.Started:
+		// if the zone has any existing events we need to remove them
+		// e.g. sudden death started immediately after a meltdown tie
+		for alertID, alertData := range manager.alerts {
+			if alertID.WorldID == e.WorldID && alertData.MapID == e.ZoneID {
+				// no need to set the zone's EventState to nil because we'll overwrite it in the next block
+				delete(manager.alerts, alertID)
+			}
+		}
+
 		eventData := manager.gameData.GetEvent(e.MetagameEventID)
 		event := newEvent(e.EventInstanceID(), e.ZoneID, eventData.MetagameEventID, e.Timestamp, manager.gameData)
 		manager.alerts[e.EventInstanceID()] = event
@@ -471,35 +487,32 @@ func handleMetagame(ctx context.Context, manager *Manager, e event.MetagameEvent
 			ZoneInstanceID: e.ZoneID,
 		}
 		manager.state.setEvent(zid, event)
+		emitEventUpdate(manager, (*event).Clone())
 	case ps2.Restarted:
 	case ps2.Cancelled, ps2.Ended:
+		// events can end much earlier than their duration in the case of server shutdown.
+		// there are messages ingame that the server will be shutting down and the alert timer will change ingame.
+		// there are no events emitted from the census push service.
 		event := manager.alerts[e.EventInstanceID()]
 		if event == nil {
 			return
 		}
-		//todo: emit event update
-		event.Score.NC = e.FactionNC
-		event.Score.VS = e.FactionVS
-		event.Score.TR = e.FactionTR
 		event.Ended = &e.Timestamp
-	}
-	if ps2.IsTerritoryAlert(eventData.MetagameEventID) {
-		go func() {
-			// give ps2alerts a chance to create the event
-			time.Sleep(20 * time.Second)
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			i, err := ps2alerts.GetInstanceContext(ctx, e.EventInstanceID())
-			if err != nil {
-				slog.Debug("ps2alerts metagame event lookup failed", "error", err)
-				return
-			}
-			select {
-			case ch <- i:
-			case <-ctx.Done():
-				return
-			}
-		}()
+		event.Timestamp = e.Timestamp
+		nc := event.Score.NC
+		vs := event.Score.VS
+		tr := event.Score.TR
+
+		if nc > vs && nc > tr {
+			event.Victor = NC
+		}
+		if vs > nc && vs > tr {
+			event.Victor = VS
+		}
+		if tr > nc && tr > vs {
+			event.Victor = TR
+		}
+		emitEventUpdate(manager, (*event).Clone())
 	}
 }
 func handleLock(manager *Manager, e event.ContinentLock) {
@@ -514,7 +527,7 @@ func handleLock(manager *Manager, e event.ContinentLock) {
 		// just ignore any we aren't already tracking
 		return
 	}
-	zone.ContinentState = locked
+	zone.ContinentState = psmap.Locked
 	zone.OwningFaction = e.TriggeringFaction
 	if zone.Event != nil {
 		zone.Event.Victor = e.TriggeringFaction
@@ -610,7 +623,7 @@ func countPlayers(m *Manager) {
 			m.state.setZonePop(id, zoneCount[id])
 		}
 	}
-
+	emitPopulationSums(m)
 }
 func removeStaleEvents(m *Manager) {
 	for eventID, event := range m.alerts {
@@ -648,18 +661,13 @@ func handlePS2AlertsResponse(manager *Manager, ps2aInstance ps2alerts.Alert) {
 	}
 	event.Ended = ps2aInstance.TimeEnded
 
-	// select {
-	// case manager.eventUpdates <- event: // this is where I would broadcast that event data is updated and e.g. update discord messages
-	// default:
-	// }
+	emitEventUpdate(manager, (*event).Clone())
 }
 
 func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState) {
 	worldZones := m.state.listZones()
 	for world, zones := range worldZones {
-		// removed concurrency:
-		//go
-		func(w ps2.WorldID, zones []ps2.ZoneInstanceID) {
+		go func(w ps2.WorldID, zones []ps2.ZoneInstanceID) {
 			if len(zones) == 0 {
 				return
 			}
@@ -667,7 +675,7 @@ func getMapData(ctx context.Context, m *Manager, results chan<- census.ZoneState
 			defer stop()
 			zm, err := census.GetMap(ctx, m.census, w, zones...)
 			if err != nil {
-				slog.Warn("failed getting map state from census", "error", err, "zones", zones, "world", w)
+				// slog.Warn("failed getting map state from census", "error", err, "zones", zones, "world", w)
 				return
 			}
 			for _, z := range zm {
@@ -729,7 +737,7 @@ func (question managerQuery[T]) Ask(manager *Manager) {
 	select {
 	case question.result <- question.queryFn(manager):
 	default:
-		slog.Debug("dropped manager query result; result channel should be buffered")
+		manager.logf("dropped manager query result; result channel should be buffered")
 	}
 
 }
@@ -770,5 +778,6 @@ func newEvent(id ps2.MetagameEventInstanceID, zone ps2.ZoneInstanceID, eventID p
 		StartingFaction:  ps2.StartingFaction(eventData.MetagameEventID),
 		EventURL:         fmt.Sprintf("https://ps2alerts.com/alert/%s", id),
 		Started:          start,
+		Timestamp:        time.Now(),
 	}
 }

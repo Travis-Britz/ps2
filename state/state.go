@@ -2,27 +2,38 @@ package state
 
 import (
 	"encoding/json"
-	"fmt"
-	"log/slog"
+	"maps"
 	"time"
 
 	"github.com/Travis-Britz/ps2"
 	"github.com/Travis-Britz/ps2/census"
+	"github.com/Travis-Britz/ps2/psmap"
 )
 
 type GlobalState struct {
 	Worlds []WorldState `json:"worlds"`
 }
 
+func (state GlobalState) Population() PopulationTotal {
+	pt := PopulationTotal{}
+	for _, world := range state.Worlds {
+		summed := WorldPopulation{Zones: make(map[ps2.ZoneID]zonepop)}
+		summed.World = world.Population
+		for _, zone := range world.Zones {
+			summed.Zones[zone.ZoneID] = zone.Population
+		}
+		pt[world.WorldID] = summed
+	}
+	return pt
+}
+
 func (state *GlobalState) trackWorld(world census.World) {
 	if world.WorldID == 0 {
 		// this condition should not be possible if everything else is working properly,
-		// so if it happens we need the stack trace
-		panic("attempted to track empty world")
+		return
 	}
 	for _, w := range state.Worlds {
 		if w.WorldID == world.WorldID {
-			slog.Debug("world is already being tracked", "world", w)
 			return
 		}
 	}
@@ -62,7 +73,6 @@ func (state *GlobalState) setWorldPop(id ps2.WorldID, count popCounter) {
 func (state *GlobalState) setZonePop(id uniqueZone, count popCounter) {
 	zone := state.getZoneptr(id)
 	if zone == nil {
-		slog.Debug("tried to set population on untracked zone", "id", id)
 		return
 	}
 	zone.Population = zonepop{
@@ -81,12 +91,10 @@ func (state *GlobalState) deleteEvent(id uniqueZone) {
 func (state *GlobalState) setEvent(id uniqueZone, event *EventState) {
 
 	if id.WorldID == 0 || id.ZoneInstanceID.ZoneID() == 0 {
-		// I need a stack trace if this condition happens
-		panic("attempted to set event on an empty id")
+		return
 	}
 	zone := state.getZoneptr(id)
 	if zone == nil {
-		slog.Debug("attempted to set event state on an untracked zone", "zone", id, "event", event)
 		return
 	}
 	zone.Event = event
@@ -144,13 +152,11 @@ type WorldState struct {
 
 func (state *WorldState) trackZone(id ps2.ZoneInstanceID, zoneData census.Zone) {
 	if zoneData.ZoneID == 0 {
-		// if we ever reach this condition,
-		// we need a stack trace
-		panic("attempted to track empty zone")
+		return
 	}
 	for _, zone := range state.Zones {
 		if zone.MapID == id {
-			slog.Debug("zone is already being tracked", "zone_state", zone)
+			// slog.Debug("zone is already being tracked", "zone_state", zone)
 			return
 		}
 	}
@@ -158,6 +164,8 @@ func (state *WorldState) trackZone(id ps2.ZoneInstanceID, zoneData census.Zone) 
 		MapID:    id,
 		ZoneID:   zoneData.ZoneID,
 		ZoneName: zoneData.Name.String(),
+		Regions:  make(psmap.State),
+		Cutoff:   make(map[ps2.RegionID]bool),
 	}
 	state.Zones = append(state.Zones, new)
 }
@@ -169,31 +177,6 @@ func (original WorldState) Clone() (new WorldState) {
 		new.Zones[i] = zone.Clone()
 	}
 	return new
-}
-
-type continentState int
-
-const (
-	locked continentState = iota
-	unstable
-	unlocked
-)
-
-func (state continentState) String() string {
-	switch state {
-	case locked:
-		return "locked"
-	case unlocked:
-		return "unlocked"
-	case unstable:
-		return "unstable"
-	default:
-		return fmt.Sprintf("invalid_state(%d)", int(state))
-	}
-}
-
-func (state continentState) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%q", state.String())), nil
 }
 
 type worldpop struct {
@@ -218,26 +201,18 @@ type score struct {
 }
 
 type ZoneState struct {
-	MapID          ps2.ZoneInstanceID `json:"census_map_id"`
-	ZoneID         ps2.ZoneID         `json:"zone_id"`
-	OwningFaction  ps2.FactionID      `json:"owning_faction"`
-	ZoneName       string             `json:"name"`
-	ContinentState continentState     `json:"continent_state"`
-	Population     zonepop            `json:"population"`
-	LastLock       *time.Time         `json:"last_lock"`
-	LastUnlock     *time.Time         `json:"last_unlock"`
-	Regions        []RegionState      `json:"-"`
-	MapTimestamp   time.Time          `json:"map_timestamp"`
-	Event          *EventState        `json:"event"`
-}
-
-type RegionState struct {
-	Region  ps2.RegionID
-	Faction ps2.FactionID
-}
-
-type MapState struct {
-	Regions []RegionState
+	MapID          ps2.ZoneInstanceID    `json:"census_map_id"`
+	ZoneID         ps2.ZoneID            `json:"zone_id"`
+	OwningFaction  ps2.FactionID         `json:"owning_faction"`
+	ZoneName       string                `json:"name"`
+	ContinentState psmap.Status          `json:"continent_state"`
+	Population     zonepop               `json:"population"`
+	LastLock       *time.Time            `json:"last_lock"`
+	LastUnlock     *time.Time            `json:"last_unlock"`
+	Regions        psmap.State           `json:"-"`
+	Cutoff         map[ps2.RegionID]bool `json:"-"`
+	MapTimestamp   time.Time             `json:"map_timestamp"`
+	Event          *EventState           `json:"event"`
 }
 
 func (original ZoneState) Clone() (new ZoneState) {
@@ -255,9 +230,7 @@ func (original ZoneState) Clone() (new ZoneState) {
 		l := *original.LastUnlock
 		new.LastUnlock = &l
 	}
-
-	new.Regions = make([]RegionState, len(original.Regions))
-	copy(new.Regions, original.Regions)
+	new.Regions = maps.Clone(original.Regions)
 	return new
 }
 
@@ -276,6 +249,7 @@ type EventState struct {
 	Victor           ps2.FactionID               `json:"victor"`    // faction will be 0 when ended is nil
 	Started          time.Time                   `json:"started"`
 	Ended            *time.Time                  `json:"ended"`
+	Timestamp        time.Time                   `json:"-"` // Timestamp is the time this data was last updated
 }
 
 func (event EventState) MarshalJSON() ([]byte, error) {
