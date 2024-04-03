@@ -23,21 +23,46 @@ type MapHex struct {
 func (MapHex) CollectionName() string { return "map_hex" }
 
 type MapRegion struct {
-	Facility
-	MapRegionID      ps2.RegionID         `json:"map_region_id,string"`
-	ZoneID           ps2.ZoneID           `json:"zone_id,string"`
-	LocationX        float64              `json:"location_x,string"`
-	LocationY        float64              `json:"location_y,string"`
-	LocationZ        float64              `json:"location_z,string"`
-	RewardAmount     int                  `json:"reward_amount"`
-	RewardCurrencyID ps2.RewardCurrencyID `json:"reward_currency_id,string"`
+	MapRegionID ps2.RegionID       `json:"map_region_id,string"`
+	FacilityID  ps2.FacilityID     `json:"facility_id,string"`
+	ZoneID      ps2.ZoneID         `json:"zone_id,string"`
+	Name        string             `json:"facility_name"`
+	Type        ps2.FacilityTypeID `json:"facility_type_id,string"`
+	TypeName    string             `json:"facility_type"`
+	LocationX   float64            `json:"location_x,string"`
+	LocationY   float64            `json:"location_y,string"`
+	LocationZ   float64            `json:"location_z,string"`
 }
+
+func (r MapRegion) Region() ps2.RegionID             { return r.MapRegionID }
+func (r MapRegion) Facility() ps2.FacilityID         { return r.FacilityID }
+func (r MapRegion) FacilityType() ps2.FacilityTypeID { return r.Type }
+
+func (MapRegion) CollectionName() string { return "map_region" }
+
+// Facility is a capturable game facility.
+//
+// Note: The census collection this type uses is shared with MapRegion
+// because there is no collection for facilities.
+// Not all map regions have a facility,
+// which means when loading facilities from census
+// (like with [census.LoadCollection]) you will need to filter out facilities with a facility ID of 0.
 type Facility struct {
-	FacilityID       ps2.FacilityID     `json:"facility_id,string"`
-	FacilityName     string             `json:"facility_name"`
-	FacilityType     ps2.FacilityTypeID `json:"facility_type_id,string"`
-	FacilityTypeName string             `json:"facility_type"`
+	FacilityID ps2.FacilityID     `json:"facility_id,string"`
+	ZoneID     ps2.ZoneID         `json:"zone_id,string"`
+	Name       string             `json:"facility_name"`
+	Type       ps2.FacilityTypeID `json:"facility_type_id,string"`
+	TypeName   string             `json:"facility_type"`
+	LocationX  float64            `json:"location_x,string"`
+	LocationY  float64            `json:"location_y,string"`
+	LocationZ  float64            `json:"location_z,string"`
 }
+
+func (f Facility) FacilityType() ps2.FacilityTypeID { return f.Type }
+func (f Facility) Facility() ps2.FacilityID         { return f.FacilityID }
+
+func (Facility) CollectionName() string { return "map_region" }
+
 type FacilityType struct {
 	FacilityTypeID ps2.FacilityTypeID `json:"facility_type_id,string"`
 	Description    string             `json:"description"`
@@ -53,16 +78,25 @@ func (f FacilityType) ImageURL() string {
 func (FacilityType) CollectionName() string { return "facility_type" }
 
 type FacilityLink struct {
-	ZoneID      ps2.ZoneID     `json:"zone_id"`
-	FacilityIDA ps2.FacilityID `json:"facility_id_a"`
-	FacilityIDB ps2.FacilityID `json:"facility_id_b"`
+	ZoneID      ps2.ZoneID     `json:"zone_id,string"`
+	FacilityIDA ps2.FacilityID `json:"facility_id_a,string"`
+	FacilityIDB ps2.FacilityID `json:"facility_id_b,string"`
+	Description string         `json:"description"`
 }
+
+func (fl FacilityLink) A() ps2.FacilityID { return fl.FacilityIDA }
+func (fl FacilityLink) B() ps2.FacilityID { return fl.FacilityIDB }
+
+func (FacilityLink) CollectionName() string { return "facility_link" }
+
 type Region struct {
 	RegionID         ps2.RegionID     `json:"region_id,string"`
 	ZoneID           ps2.ZoneID       `json:"zone_id,string"`
 	InitialFactionID ps2.FactionID    `json:"initial_faction_id,string"`
 	Name             ps2.Localization `json:"name"`
 }
+
+func (Region) CollectionName() string { return "region" }
 
 func GetMap(ctx context.Context, client *Client, world ps2.WorldID, zone ...ps2.ZoneInstanceID) (zm []ZoneState, err error) {
 	zones := make([]string, 0, 5)
