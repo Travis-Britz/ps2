@@ -40,7 +40,7 @@ Package [`census`](./census/) contains structs and functions for working with th
 `census` builds on `ps2` by defining the structs returned by various census collections.
 These structs can be combined together to quickly build up responses for complicated census queries.
 
-For example, a struct for parsing results from `census.lithafalcon.cc`, which contains a superset of the fields returned by census for most collections, could be built like this:
+These types can also be embedded in more complex structs. For example, a struct for parsing results from `census.lithafalcon.cc`, which contains a superset of the fields returned by census for most collections, could be built like this:
 
 ```go
 type Faction struct {
@@ -50,12 +50,18 @@ type Faction struct {
 }
 ```
 
-These are trivial examples of course, but working with the Census API in Go is surprisingly tedious at times.
+These are trivial examples of course, but working with JSON from the Census API is surprisingly tedious in Go.
 By using and passing around types from `ps2` and structs from `census`,
 programs can work together much more easily,
 and with all the advantages of type safety.
 
-`census` also contains a number of functions for querying the census api.
+`census` also contains a number of functions for querying the census api. This includes a few helpful features by default:
+
+-   Rate and concurrency limiting - your code can go func the census as often as you like without protection.
+
+-   Automatic pagination for loading entire static collections.
+-   Correct serialization/deserialization - is the event duration in milliseconds? Seconds? You don't care; it's a `time.Time`.
+
 View the package docs for more information.
 
 ## wsc
@@ -89,19 +95,17 @@ Package `state` is for tracking live game state:
 -   territory control
 -   alert status
 
-This is done by attaching to a `wsc.Client` and listening for various population and territory events,
-as well as collecting results from 3rd-party sites like ps2alerts.com.
+The state manager keeps itself updated in realtime by attaching to a `wsc.Client` and listening for various population and territory events.
 
-`state` can also emit continent unlock events,
-which are not directly available from the official push service.
+The state manager can also emit events when continents change state (including unlocks), when territory control changes during an alert, and when populations are counted (every 15 seconds).
 
-## map
+## psmap
 
-todo
+Package `psmap` contains various map-related functions:
 
-`map` will be a package for various map-related utility functions and rendering images of current map state.
-
-(maybe)
+-   Territory percentage calculation (including cut off regions)
+-   Outlining useful for generating polygons for map regions
+-   SVG rendering of map territory control
 
 ## pack2
 
