@@ -12,7 +12,7 @@ type Typer interface {
 	Type() ps2.Event
 }
 
-// UniqueKey is used to uniquely identify an event.
+// UniqueKey is used to uniquely identify an event across event types.
 //
 // This is needed because the planetside event stream can send duplicated events.
 type UniqueKey [25]byte
