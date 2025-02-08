@@ -1,29 +1,13 @@
 # About
 
-Package `ps2` provides types, constants, and functions for working with PlanetSide 2 APIs.
+Package `ps2` provides modules for working with PlanetSide 2 APIs.
 
-These modules do much of the heavy lifting in converting raw data sources to strongly-typed values.
-
-This repository also contains sub-modules for working with various services.
 Some 3rd-party sites have small inclusions as well;
 these may be expanded upon in the future.
 
 ### Goals
 
-The goal is to ease the burden of building packages that can work together by providing a standard library of building blocks.
-
-Imagine being able to use modules with function signatures like this:
-
-```go
-func GetOutfitMembers(id ps2.OutfitID) ([]ps2.CharacterID, error) {
-    //...
-}
-```
-
-By adopting a standard base for parameter and return types,
-packages can much more easily work together with all the benefits of type-safety.
-No passing around strings and forgetting if `""` or `"0"` is the empty value.
-No passing around generic int types and passing an instanced zone ID to a function that expected a zone id.
+The goal is to provide a standard library of building blocks that PlanetSide packages can build upon.
 
 ## ps2
 
@@ -35,9 +19,14 @@ This package is generally not useful by itself.
 
 ## census
 
-Package [`census`](./census/) contains structs and functions for working with the official Daybreak Games Census API for PlanetSide 2.
+Package [`census`](./census/) contains types and functions for working with the official Census API.
+
+### Types
 
 `census` builds on `ps2` by defining the structs returned by various census collections.
+
+Serialization/deserialization - is the event duration in milliseconds? Seconds? You don't care; it's a `time.Time`.
+
 These structs can be combined together to quickly build up responses for complicated census queries.
 
 These types can also be embedded in more complex structs. For example, a struct for parsing results from `census.lithafalcon.cc`, which contains a superset of the fields returned by census for most collections, could be built like this:
@@ -55,22 +44,30 @@ By using and passing around types from `ps2` and structs from `census`,
 programs can work together much more easily,
 and with all the advantages of type safety.
 
-`census` also contains a number of functions for querying the census api. This includes a few helpful features by default:
+### HTTP Client
 
--   Rate and concurrency limiting - your code can go func the census as often as you like without protection.
+The `census` HTTP Client includes a number of features out of the box that every program should have:
 
--   Automatic pagination for loading entire static collections.
--   Correct serialization/deserialization - is the event duration in milliseconds? Seconds? You don't care; it's a `time.Time`.
+-   Concurrency limits - go func the census API any way you like (respectfully).
 
-View the package docs for more information.
+    This package will automatically apply a limit of two concurrent requests.
+    Additional requests will wait until active requests succeed or fail.
+
+-   Rate limits.
+
+    Similar to the concurrency limit (but different), this package will also apply a rate limit to census requests. Unlike the concurrency limit, the rate limit can be configured. The package includes a reasonable default.
+
+    Even though requests are rate limited, programs should still cache static results whenever possible.
+
+-   Error handling and retries.
+
+    Census requests may fail for various reasons. Most failed requests can be retried immediately. This package will automatically retry up to a configurable number of times for known error types, which greatly simplifies most use cases. The default client retries once.
+
+    Errors are also tracked, and if too many consecutive errors are encountered then additional requests will short circuit and immediately return an error for a period of time.
 
 ## wsc
 
 Package [`wsc`](./event/wsc/) contains a **W**eb**S**ocket **C**lient for interacting with the PlanetSide 2 realtime event push service.
-
-The JSON structure of the realtime event service can be surprisingly annoying to work with in Go.
-
-`wsc` takes care of that.
 
 Every message received by the client is parsed into an [`event`](./event/) struct,
 such as `event.Death`, `event.VehicleDestroy`, etc.
@@ -95,7 +92,7 @@ Package `state` is for tracking live game state:
 -   territory control
 -   alert status
 
-The state manager keeps itself updated in realtime by attaching to a `wsc.Client` and listening for various population and territory events.
+The state manager keeps itself updated in real-time by attaching to a `wsc.Client` and listening for various population and territory events.
 
 The state manager can also emit events when continents change state (including unlocks), when territory control changes during an alert, and when populations are counted (every 15 seconds).
 
