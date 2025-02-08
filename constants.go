@@ -114,6 +114,7 @@ const (
 	SmallOutpostCTF        FacilityTypeID = 15
 	AmpStationCTF          FacilityTypeID = 16
 	ConstructionOutpostCTF FacilityTypeID = 17
+	Assault                FacilityTypeID = 18
 )
 
 const (
@@ -337,6 +338,8 @@ const (
 	AmerishNaniteStorm MetagameEventID = 253
 	EsamirNaniteStorm  MetagameEventID = 254
 	OshurNaniteStorm   MetagameEventID = 255
+
+	OshurSuddenDeath2 MetagameEventID = 260
 )
 
 const (
