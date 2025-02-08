@@ -38,7 +38,7 @@ func (e genericServerError) Error() string {
 }
 
 // genericInternalServerError is used when census returns a well-formed error message.
-// My guess is that this format only shows up during internal uncaught exceptions,
+// This format only shows up during internal uncaught exceptions,
 // which would only happen for unsupported/invalid request syntax.
 // known error codes: "SERVER_ERROR"
 // I don't know if there are other error codes that can be returned in this format.
@@ -54,13 +54,6 @@ func (genericInternalServerError) Retryable() bool { return false }
 
 func errBadJSON(err error) error {
 	return fmt.Errorf("unmarshal json: %w", err)
-}
-
-func errRateLimit() error {
-	return retryableError{
-		errRateLimitExceeded,
-		time.Now().Add(1 * time.Minute),
-	}
 }
 
 // errRateLimitExceeded is returned when too many requests are sent without a service ID.
@@ -92,14 +85,11 @@ var errServerMaintenance = errors.New("server maintenance")
 // errShortCircuit is returned when a treshold of errors is reached
 var errShortCircuit = errors.New("there is a problem with the system - try again later")
 
-func errMaintenance() error {
-	return retryableError{
-		errServerMaintenance,
-		time.Now().Add(30 * time.Minute),
-	}
-}
+// errServiceUnavailable is returned when a valid collection was queried but the data source is in a bad state
+// (like a DB down).
+var errServiceUnavailable = errors.New("internal server error")
 
-// wrapRetryableErrors wraps context.DeadlineExceeded and network errors with a retryable error.
+// wrapRetryableErrors wraps known error types with Retryable.
 func wrapRetryableErrors(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return retryableError{
@@ -109,6 +99,26 @@ func wrapRetryableErrors(err error) error {
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
+		return retryableError{
+			err,
+			time.Now(),
+		}
+	}
+	if errors.Is(err, errServerMaintenance) {
+		return retryableError{
+			errServerMaintenance,
+			time.Now().Add(30 * time.Minute),
+		}
+	}
+	if errors.Is(err, errRateLimitExceeded) {
+		return retryableError{
+			errRateLimitExceeded,
+			time.Now().Add(1 * time.Minute),
+		}
+	}
+	if errors.Is(err, errServiceUnavailable) {
+		// since this error can be returned by a bad database connection on the census side,
+		// retrying should be fine because the load balancer might give us a different backend the next time.
 		return retryableError{
 			err,
 			time.Now(),
