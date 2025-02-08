@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -204,6 +205,7 @@ type OutfitID int64
 //
 // When the realtime events API spits out a zone_id in an event,
 // that zone_id field is what we refer to as a ZoneInstanceID in this package.
+// Other tutorials have referred to this ZoneInstanceID as a Definition ID.
 // ZoneInstanceID is a bitmasked ID containing the ID for the map (either ZoneID or Geometry, depending) and possibly an instance counter.
 // When the zone is a static zone (Hossin, Indar, etc.) then that ID is the zone_id as reported by Census.
 // When the zone is a dynamic zone (Desolation, Nexus, Koltyr, etc.) then that ID is a bitmasked field of an internal incrementing instance counter
@@ -228,6 +230,46 @@ type OutfitID int64
 // ContinentID and ZoneID can be cast to ZoneInstanceID if the zone is known to be static ("dynamic" = false).
 // GeometryID can only be converted to ZoneInstanceID if the ephemeral instance counter is known.
 type ContinentID uint16
+
+// ZoneID looks up the ZoneID for c and returns an error if no data is available.
+func (c ContinentID) ZoneID() (ZoneID, error) {
+	switch c {
+	case Indar:
+		return 2, nil
+	case Hossin:
+		return 4, nil
+	case Amerish:
+		return 6, nil
+	case Esamir:
+		return 8, nil
+	case Nexus:
+		return 10, nil
+	case Extinction:
+		return 11, nil
+	case Desolation2:
+		return 12, nil
+	case Ascension:
+		return 13, nil
+	case Koltyr:
+		return 14, nil
+	case Oshur:
+		return 344, nil
+	case Desolation:
+		return 338, nil
+	default:
+		return 0, errors.New("no data")
+	}
+}
+
+// ZoneInstanceID attempts to convert a ContinentID back to an instanced zone ID.
+// This will fail for all except the five main continents.
+// Instanced continents require the temporary instance ID in order to be converted.
+func (c ContinentID) ZoneInstanceID() (ZoneInstanceID, error) {
+	if IsPermanentZone(c) {
+		return ZoneInstanceID(c), nil
+	}
+	return 0, fmt.Errorf("instanced continents cannot be converted without the instance counter")
+}
 
 func (c ContinentID) String() string {
 	switch c {
@@ -298,6 +340,35 @@ func (c ContinentID) GoString() string {
 // See the docs for [ContinentID].
 type ZoneID uint16
 
+func (z ZoneID) ContinentID() (ContinentID, error) {
+	switch z {
+	case 2:
+		return Indar, nil
+	case 4:
+		return Hossin, nil
+	case 6:
+		return Amerish, nil
+	case 8:
+		return Esamir, nil
+	case 10:
+		return Nexus, nil
+	case 11:
+		return Extinction, nil
+	case 12:
+		return Desolation2, nil
+	case 13:
+		return Ascension, nil
+	case 14:
+		return Koltyr, nil
+	case 344:
+		return Oshur, nil
+	case 338:
+		return Desolation, nil
+	default:
+		return 0, errors.New("no data")
+	}
+}
+
 func (z ZoneID) String() string   { return strconv.Itoa(int(z)) }
 func (z ZoneID) GoString() string { return strconv.Itoa(int(z)) }
 
@@ -305,10 +376,14 @@ func (z ZoneID) GoString() string { return strconv.Itoa(int(z)) }
 // See the docs for [ContinentID].
 type GeometryID uint16
 
+func (g GeometryID) ZoneInstanceID(counter uint16) ZoneInstanceID {
+	return ZoneInstanceID(uint32(counter)<<16 | uint32(g))
+}
 func (g GeometryID) GoString() string { return strconv.Itoa(int(g)) }
 func (g GeometryID) String() string   { return strconv.Itoa(int(g)) }
 
 // ZoneInstanceID represents a (possibly) instanced Continent ID.
+// ZoneInstanceID is the zone_id provided in realtime events as well as the ID expected by the /map endpoint.
 //
 // When the instance counter is set,
 // the identifier given will be a GeometryID for a dynamic zone.
@@ -317,26 +392,12 @@ func (g GeometryID) String() string   { return strconv.Itoa(int(g)) }
 // https://github.com/cooltrain7/Planetside-2-API-Tracker/wiki/Tutorial:-Zone-IDs
 type ZoneInstanceID uint32
 
-// String prints id in a debugging-friendly format.
-// Use [StringID] to get the ID as a string.
-func (id ZoneInstanceID) String() string {
-	if id.IsInstanced() {
-		return fmt.Sprintf("%d<<16|%d", id.Instance(), id.DefinitionID())
-	}
-	return id.ZoneID().String()
-}
 func (id ZoneInstanceID) StringID() string { return strconv.FormatInt(int64(id), 10) }
 
 // ZoneID returns the continent ID
 func (id ZoneInstanceID) ZoneID() ContinentID { return ContinentID(id & 0x0000FFFF) }
 
-// Instance is an incrementing counter to differentiate zones with multiple instanced copies running.
-//
-// Instance is unique per server and resets when the server restarts.
-func (id ZoneInstanceID) Instance() uint16  { return uint16(uint(id&0xFFFF0000) >> 16) }
-func (id ZoneInstanceID) IsInstanced() bool { return id.Instance() != 0 }
-
-// DefinitionID offers a more precise way to check which ID is used for a zone,
+// DefinitionID offers a more precise way to check whether the ID used for a zone is a ZoneID or GeometryID,
 // but at the cost of needing to type check the result to determine whether it is a GeometryID or ZoneID.
 // The term Definition ID comes from the linked github wiki under [ZoneInstanceID].
 func (id ZoneInstanceID) DefinitionID() any {
@@ -344,6 +405,21 @@ func (id ZoneInstanceID) DefinitionID() any {
 		return GeometryID(id.ZoneID())
 	}
 	return ZoneID(id.ZoneID())
+}
+
+// Instance is an incrementing counter to differentiate zones with multiple instanced copies running.
+//
+// Instance is unique per server and resets when the server restarts.
+func (id ZoneInstanceID) Instance() uint16  { return uint16(uint32(id&0xFFFF0000) >> 16) }
+func (id ZoneInstanceID) IsInstanced() bool { return id.Instance() != 0 }
+
+// String prints id in a debugging-friendly format.
+// Use [StringID] to get the ID as a string.
+func (id ZoneInstanceID) String() string {
+	if id.IsInstanced() {
+		return fmt.Sprintf("%d<<16|%d", id.Instance(), id.DefinitionID())
+	}
+	return id.ZoneID().String()
 }
 
 func (id ZoneInstanceID) GoString() string {
@@ -620,6 +696,8 @@ func (f FacilityTypeID) String() string {
 		return "AmpStationCTF"
 	case ConstructionOutpostCTF:
 		return "ConstructionOutpostCTF"
+	case Assault:
+		return "Assault"
 	default:
 		return strconv.Itoa(int(f))
 	}
