@@ -34,6 +34,7 @@ type Timestamper interface {
 	Time() time.Time
 }
 
+// Raw is used to parse the raw payload section of an incoming websocket message.
 type Raw struct {
 	AchievementId          ps2.AchievementID        `json:"achievement_id,string"`
 	BattleRank             uint8                    `json:"battle_rank,string"`
@@ -81,6 +82,7 @@ type Raw struct {
 	TeamId                 ps2.FactionID            `json:"team_id,string"`
 	ZoneId                 ps2.ZoneInstanceID       `json:"zone_id,string"`     // Indar, Hossin, VR Training (NC), etc.
 	InstanceId             ps2.InstanceID           `json:"instance_id,string"` // used in alert identification
+	FishId                 ps2.FishID               `json:"fish_id,string"`
 }
 
 // stringNumericBool is a bool value represented as "0" or "1" with json.
@@ -260,6 +262,17 @@ var handlers = map[ps2.Event]func(Raw) Typer{
 			PopulationNC:      r.NcPopulation,
 			PopulationTR:      r.TrPopulation,
 			MetagameEventID:   r.MetagameEventId,
+		}
+	},
+	ps2.FishScan: func(r Raw) Typer {
+		return FishScan{
+			CharacterID: r.CharacterId,
+			FishID:      r.FishId,
+			LoadoutID:   r.LoadoutId,
+			TeamID:      r.TeamId,
+			Timestamp:   time.Unix(r.Timestamp, 0).UTC(),
+			WorldID:     r.WorldId,
+			ZoneID:      r.ZoneId,
 		}
 	},
 }
@@ -533,4 +546,20 @@ func (SkillAdded) Type() ps2.Event   { return ps2.SkillAdded }
 func (e SkillAdded) Time() time.Time { return e.Timestamp }
 func (e SkillAdded) Key() UniqueKey {
 	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.SkillID))
+}
+
+type FishScan struct {
+	CharacterID ps2.CharacterID
+	FishID      ps2.FishID
+	LoadoutID   ps2.LoadoutID
+	TeamID      ps2.FactionID
+	Timestamp   time.Time
+	WorldID     ps2.WorldID
+	ZoneID      ps2.ZoneInstanceID
+}
+
+func (FishScan) Type() ps2.Event   { return ps2.FishScan }
+func (e FishScan) Time() time.Time { return e.Timestamp }
+func (e FishScan) Key() UniqueKey {
+	return makeKey(e.Timestamp, e.Type(), int64(e.CharacterID), int64(e.FishID))
 }

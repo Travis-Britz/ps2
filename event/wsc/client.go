@@ -49,6 +49,7 @@ type Client struct {
 	playerFacilityDefendHandlers  []func(event.PlayerFacilityDefend)
 	skillAddedHandlers            []func(event.SkillAdded)
 	continentLockHandlers         []func(event.ContinentLock)
+	fishScanHandlers              []func(event.FishScan)
 }
 
 // SetMessageLogger sets a logger to track all sent and received websocket messages.
@@ -188,6 +189,8 @@ func (c *Client) AddHandler(h any) {
 		c.skillAddedHandlers = append(c.skillAddedHandlers, v)
 	case func(event.ContinentLock):
 		c.continentLockHandlers = append(c.continentLockHandlers, v)
+	case func(event.FishScan):
+		c.fishScanHandlers = append(c.fishScanHandlers, v)
 	default:
 		panic(fmt.Sprintf("AddHandler: invalid type '%T'", h))
 	}

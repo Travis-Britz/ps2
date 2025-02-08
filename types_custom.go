@@ -55,6 +55,7 @@ const (
 	PlayerFacilityCapture
 	PlayerFacilityDefend
 	SkillAdded
+	FishScan
 )
 
 var events = map[Event]string{
@@ -73,6 +74,7 @@ var events = map[Event]string{
 	PlayerFacilityCapture: "PlayerFacilityCapture",
 	PlayerFacilityDefend:  "PlayerFacilityDefend",
 	SkillAdded:            "SkillAdded",
+	FishScan:              "FishScan",
 }
 
 func (t Event) EventName() string { return t.String() }

@@ -847,3 +847,4 @@ func (l LoadoutID) String() string {
 
 type ProfileID int
 type ProfileTypeID int
+type FishID int
