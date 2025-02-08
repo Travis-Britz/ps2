@@ -124,6 +124,7 @@ func run(ctx context.Context) (err error) {
 	client.AddHandler(func(e event.PlayerFacilityCapture) { display(e) })
 	client.AddHandler(func(e event.PlayerFacilityDefend) { display(e) })
 	client.AddHandler(func(e event.SkillAdded) { display(e) })
+	client.AddHandler(func(e event.FishScan) { display(e) })
 
 	var writer io.Writer = os.Stdout
 
