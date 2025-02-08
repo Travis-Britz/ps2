@@ -62,7 +62,7 @@ func IsPlayableZone(z ContinentID) bool {
 func IsHiddenWorld(w WorldID) bool {
 	switch w {
 	// hidden PC worlds
-	case Apex, Briggs:
+	case Apex, Briggs, Cobalt:
 		return true
 
 		// hidden PS4 worlds
@@ -175,4 +175,5 @@ var eventDataSupplementTable = map[MetagameEventID]struct {
 	OshurUnstableMeltdownNC:   {NC, true, true},
 	OshurUnstableMeltdownVS:   {VS, true, true},
 	OshurUnstableMeltdownTR:   {TR, true, true},
+	OshurSuddenDeath2:         {None, true, false},
 }
