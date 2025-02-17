@@ -27,13 +27,13 @@ func (e Environment) String() string {
 func (e Environment) GoString() string {
 	switch e {
 	case PC:
-		return "PC"
+		return "ps2.PC"
 	case PS4US:
-		return "PS4US"
+		return "ps2.PS4US"
 	case PS4EU:
-		return "PS4EU"
+		return "ps2.PS4EU"
 	default:
-		return fmt.Sprintf("Environment(%d)", int(e))
+		return fmt.Sprintf("ps2.Environment(%d)", int(e))
 	}
 }
 
