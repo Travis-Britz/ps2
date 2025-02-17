@@ -47,7 +47,7 @@ func init() {
 	}
 
 	config.PlanetsideWorldID = ps2.WorldID(world)
-	censusClient := &census.Client{Key: config.PlanetsideCensusServiceID}
+	censusClient := &census.Client{ServiceID: config.PlanetsideCensusServiceID}
 
 	switch envString {
 	case "pc":

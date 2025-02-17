@@ -21,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	client = &census.Client{
-		Key: censusKey,
+		ServiceID: censusKey,
 	}
 
 	if err := SaveCollectionToFile(".", typ); err != nil {
