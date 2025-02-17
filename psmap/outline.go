@@ -4,8 +4,6 @@ import (
 	"math"
 )
 
-const mapDimensions = 8192
-
 type Point interface {
 	// Point returns an x,y coordinate on a plane where top left is 0,0.
 	// This correlates to the SVG coordinate system and most computer graphics.
@@ -27,17 +25,29 @@ type Point interface {
 // To draw the outline for Ti Alloys:
 // https://census.daybreakgames.com/get/ps2:v2/map_hex?c:limit=5000&map_region_id=2419&c:show=x,y
 // https://census.daybreakgames.com/get/ps2:v2/zone?c:lang=en&zone_id=2&c:show=hex_size
+//
+// Note that this function only works when there are no holes in a region.
+// There is only one region in planetside that has a hole within the outline,
+// and it surrounds the entire continent of Oshur (Oshur Vast Expanse: region 18347).
+// The simple workaround is to remove this region from data sources before drawing,
+// as it is not relevant to players.
 func Outline(hexes []Hex, width int) (path []Point) {
 	if len(hexes) == 0 {
 		return nil
 	}
+
+	// tile shadows a Hex but without the Type that causes the key search to fail
+	type tile struct {
+		X int
+		Y int
+	}
 	size := widthToSize(width)
-	region := make(map[Hex]bool)
+	region := make(map[tile]bool)
 	min_x := 999
 	var leftmost Hex
 	// build up a set of hexes in the region to quickly check whether a hex is part of the region
 	for _, hex := range hexes {
-		region[hex] = true
+		region[tile{hex.X, hex.Y}] = true
 		// keep track of the leftmost hex tile we find while iterating through the list
 		if hex.X < min_x {
 			min_x = hex.X
@@ -67,7 +77,7 @@ func Outline(hexes []Hex, width int) (path []Point) {
 		// If the region exists in our set then we procede down that edge.
 		// Otherwise we turn left and stay on the current hex tile.
 		// This has the convenient property that the last move will always end on the start point.
-		if region[right.Hex] {
+		if region[tile{right.X, right.Y}] {
 			current = right
 		} else {
 			current = left
@@ -189,16 +199,10 @@ func (p point) Point() (x float64, y float64) {
 	y = center_y - p.size*math.Sin(angle_rad)
 
 	// adjust the coordinate for the planetside map, which has 0,0 in the center of the map
-	x = x + mapDimensions/2
-	y = y + mapDimensions/2
+	// x = x + mapDimensions/2
+	// y = y + mapDimensions/2
 
 	return x, y
-}
-
-// Hex represents the position of a single map hex tile.
-// X,Y correspond to the game's tile grid as returned by the census /map_hex endpoint..
-type Hex struct {
-	X, Y int
 }
 
 // Left moves the tile left.

@@ -2,6 +2,7 @@ package psmap_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -64,6 +65,7 @@ func TestCalculatePercentages(t *testing.T) {
 		},
 		"Esamir 1": {
 			File: "testdata/esamir_map_1.json",
+			// This test fails. After exhaustive searching I couldn't find out how the game is calculating Esamir territory ownership.
 			Territory: map[ps2.FactionID]float32{
 				VS: 30.196079,
 				NC: 43.137257,
@@ -110,8 +112,8 @@ func TestCalculatePercentages(t *testing.T) {
 	}
 }
 
-func loadMap(filename string) (mapData mapLattice, ms psmap.State, err error) {
-	ms = make(psmap.State)
+func loadMap(filename string) (data psmap.Map, ms psmap.State, err error) {
+	ms = psmap.State{Territory: map[ps2.RegionID]ps2.FactionID{}}
 	var regionsFilename string
 	var linksFilename string
 	switch {
@@ -127,60 +129,76 @@ func loadMap(filename string) (mapData mapLattice, ms psmap.State, err error) {
 
 	linkFile, err := os.Open(linksFilename)
 	if err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	defer linkFile.Close()
 	regionFile, err := os.Open(regionsFilename)
 	if err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	defer regionFile.Close()
 
 	latticeFile, err := os.Open(filename)
 	if err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	defer latticeFile.Close()
 
 	owners := []factionOwners{}
 	if err := json.NewDecoder(latticeFile).Decode(&owners); err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	for _, region := range owners {
-		ms[region.RegionID] = region.FactionID
+		ms.Territory[region.RegionID] = region.FactionID
 	}
 
 	var links []census.FacilityLink
 	if err := json.NewDecoder(linkFile).Decode(&links); err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	for _, link := range links {
-		mapData.links = append(mapData.links, link)
+		data.Links = append(data.Links, psmap.Link{A: link.FacilityIDA, B: link.FacilityIDB})
 	}
 	var regions []census.MapRegion
 	if err := json.NewDecoder(regionFile).Decode(&regions); err != nil {
-		return mapData, ms, err
+		return data, ms, err
 	}
 	for _, region := range regions {
-		mapData.regions = append(mapData.regions, region)
+		data.Regions = append(data.Regions, psmap.Region{
+			RegionID:       region.MapRegionID,
+			Name:           region.Name,
+			FacilityID:     region.FacilityID,
+			FacilityTypeID: region.Type,
+		})
 	}
-	return mapData, ms, nil
-}
-
-// mapLattice implements mapstate.Map
-type mapLattice struct {
-	regions []psmap.Region
-	links   []psmap.Link
-}
-
-func (ml mapLattice) Regions() []psmap.Region {
-	return ml.regions
-}
-func (ml mapLattice) Links() []psmap.Link {
-	return ml.links
+	return data, ms, nil
 }
 
 type factionOwners struct {
 	RegionID  ps2.RegionID  `json:"region_id,string"`
 	FactionID ps2.FactionID `json:"faction_id,string"`
+}
+
+func ExampleLoc_Bearing() {
+	fmt.Println(psmap.Loc{Heading: 1.570}.Bearing())
+	fmt.Println(psmap.Loc{Heading: 0.785}.Bearing())
+	fmt.Println(psmap.Loc{Heading: 0}.Bearing())
+	fmt.Println(psmap.Loc{Heading: -0.785}.Bearing())
+	fmt.Println(psmap.Loc{Heading: -1.570}.Bearing())
+	fmt.Println(psmap.Loc{Heading: -2.356}.Bearing())
+	fmt.Println(psmap.Loc{Heading: -3.142}.Bearing())
+	fmt.Println(psmap.Loc{Heading: 3.142}.Bearing())
+	fmt.Println(psmap.Loc{Heading: 2.356}.Bearing())
+
+	// Output:
+	// 0
+	// 45
+	// 90
+	// 135
+	// 180
+	// 225
+	// 270
+	// 270
+	// 315
+
 }
