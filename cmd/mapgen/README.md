@@ -182,8 +182,16 @@ will generate an image that looks something like this:
 
 ### Drawing Regions
 
+Individual regions can be cropped and optionally trimmed to the shape of their hexes.
+This may be useful for wiki purposes,
+or displaying in discord for messages like outfit capture updates.
+
 ```sh
+# generate one region image and save as ./regions/2419.png
 mapgen -region 2419 regions/2419.png
+
+# generate all region images and save in ./maps
+mapgen -regions -outputdir maps
 ```
 
 ![region 6101 cropped](./doc/output-6.png)
@@ -231,8 +239,8 @@ GET http://localhost:8080/regions/2419.png
 GET http://localhost:8080/facilities/218.png
 ```
 
-These images are pre-generated,
-which means there is essentially zero overhead for each request.
+These images are pre-generated and served as static files,
+which means there is no CPU/memory overhead for serving each request.
 Approximately 200MB of disk space is required for the file cache using 4096x4096 map images.
 
 ### JSON Data Files
