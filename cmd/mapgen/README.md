@@ -13,18 +13,19 @@ and may be compiled for any target operating system.
 
 ## Installation
 
+Using [go install](https://go.dev/ref/mod#go-install):
+
 ```sh
-git clone git@github.com:Travis-Britz/ps2.git
-cd ps2
-go build ./cmd/mapgen
-./mapgen.exe -h
+go install github.com/Travis-Britz/ps2/cmd/mapgen@v0.0.1
+mapgen -h
 ```
 
-Alternatively, using [go install](https://go.dev/ref/mod#go-install):
+Alternatively, cloning and building:
 
 ```sh
-go install github.com/Travis-Britz/ps2/cmd/mapgen
-mapgen -h
+git clone git@github.com:Travis-Britz/ps2.git && cd ps2
+go build ./cmd/mapgen
+./mapgen.exe -h
 ```
 
 ## Usage
