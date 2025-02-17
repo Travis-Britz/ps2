@@ -164,7 +164,7 @@ x=3211.266 y=470.785 z=3136.692, Heading: 0.681   /loc 3211.266 470.785 3136.692
 The result of this command can be plugged into mapgen with the following syntax:
 
 ```sh
-mapgen -s <ServiceID> -zone <zone> -loc "<x> <y> <z> [heading]" <output>
+mapgen -zone <zone> -loc "<x> <y> <z> [heading]" <output>
 ```
 
 The heading is optional.
@@ -173,7 +173,7 @@ a player arrow icon will be drawn pointing in the direction of heading.
 For example:
 
 ```sh
-mapgen -s example -zone esamir -loc "211.266 470.785 -2136.692 -2.101" loc.png
+mapgen -zone esamir -loc "211.266 470.785 -2136.692 -2.101" loc.png
 ```
 
 will generate an image that looks something like this:
@@ -183,7 +183,7 @@ will generate an image that looks something like this:
 ### Drawing Regions
 
 ```sh
-mapgen -s example -region 2419 regions/2419.png
+mapgen -region 2419 regions/2419.png
 ```
 
 ![region 6101 cropped](./doc/output-6.png)
