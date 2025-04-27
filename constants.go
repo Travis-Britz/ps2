@@ -44,22 +44,22 @@ const (
 )
 
 const (
-	Connery  WorldID = 1
-	Miller   WorldID = 10
-	Cobalt   WorldID = 13
-	Emerald  WorldID = 17
-	Jaeger   WorldID = 19
-	Apex     WorldID = 24
-	Briggs   WorldID = 25
-	SolTech  WorldID = 40
-	Genudine WorldID = 1000
-	Palos    WorldID = 1001
-	Crux     WorldID = 1002
-	Searhus  WorldID = 1003
-	Xelas    WorldID = 1004
-	Ceres    WorldID = 2000
-	Lithcorp WorldID = 2001
-	Rashnu   WorldID = 2002
+	Osprey     WorldID = 1  // Previously Connery
+	Wainwright WorldID = 10 // Previously Miller
+	Cobalt     WorldID = 13 // Merged into Wainwright
+	Emerald    WorldID = 17 // Merged into Osprey
+	Jaeger     WorldID = 19
+	Apex       WorldID = 24
+	Briggs     WorldID = 25
+	SolTech    WorldID = 40
+	Genudine   WorldID = 1000
+	Palos      WorldID = 1001
+	Crux       WorldID = 1002
+	Searhus    WorldID = 1003
+	Xelas      WorldID = 1004
+	Ceres      WorldID = 2000
+	Lithcorp   WorldID = 2001
+	Rashnu     WorldID = 2002
 )
 
 const (

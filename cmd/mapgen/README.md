@@ -16,7 +16,7 @@ and may be compiled for any target operating system.
 Using [go install](https://go.dev/ref/mod#go-install):
 
 ```sh
-go install github.com/Travis-Britz/ps2/cmd/mapgen@v0.0.1
+go install github.com/Travis-Britz/ps2/cmd/mapgen@v0.0.2
 mapgen -h
 ```
 
@@ -57,10 +57,10 @@ mapgen [options] [output]
 When `[output]` is present it will generate a single file and send it to that output.
 Server and zone are required in this mode.
 
-The following command will retreive the Emerald Esamir territory ownership from Census using the "example" Service ID and render a PNG, saving it to "output.png":
+The following command will retreive the osprey Esamir territory ownership from Census using the "example" Service ID and render a PNG, saving it to "output.png":
 
 ```sh
-mapgen -s example -world emerald -zone esamir output.png
+mapgen -s example -world osprey -zone esamir output.png
 ```
 
 The rendered image will look something like this:
@@ -70,7 +70,7 @@ The rendered image will look something like this:
 The output can be sent to Stdout instead by using "-" as the output filename:
 
 ```sh
-mapgen -s example -world emerald -zone esamir -
+mapgen -s example -world osprey -zone esamir -
 ```
 
 This may be more convenient for calling `mapgen` from within another process,
@@ -84,16 +84,16 @@ Some examples:
 ```sh
 
 # This generates every map on every server, i.e:
-# ./emerald/indar.png
-# ./emerald/hossin.png
-# ./emerald/esamir.png
-# ./emerald/amerish.png
-# ./emerald/oshur.png
-# ./connery/indar.png
-# ./connery/hossin.png
-# ./connery/esamir.png
-# ./connery/amerish.png
-# ./connery/oshur.png
+# ./osprey/indar.png
+# ./osprey/hossin.png
+# ./osprey/esamir.png
+# ./osprey/amerish.png
+# ./osprey/oshur.png
+# ./wainwright/indar.png
+# ./wainwright/hossin.png
+# ./wainwright/esamir.png
+# ./wainwright/amerish.png
+# ./wainwright/oshur.png
 # ./genudine/indar.png
 # ./genudine/hossin.png
 # ./genudine/amerish.png
@@ -103,19 +103,19 @@ mapgen -s example
 ```
 
 ```sh
-# This generates all of Emerald's maps and places them in outputdir:
-# maps/emerald/indar.png
-# maps/emerald/hossin.png
-# maps/emerald/esamir.png
-# maps/emerald/amerish.png
-# maps/emerald/oshur.png
-mapgen -s example -world emerald -outputdir maps
+# This generates all of osprey's maps and places them in outputdir:
+# maps/osprey/indar.png
+# maps/osprey/hossin.png
+# maps/osprey/esamir.png
+# maps/osprey/amerish.png
+# maps/osprey/oshur.png
+mapgen -s example -world osprey -outputdir maps
 ```
 
 ```sh
 # This generates only one map but still places it in the default outputdir:
-# ./emerald/indar.png
-mapgen -s example -world emerald -zone indar
+# ./osprey/indar.png
+mapgen -s example -world osprey -zone indar
 ```
 
 This batch mode is the most efficient for generating live maps every 1-2 minutes on a cron job and then serving them as static files from any webserver.
@@ -136,13 +136,13 @@ The following command will render maps as 128x128 transparent PNGs by using `-fo
 
 ```sh
 
-# This generates all of Emerald's maps as thumbnails and places them in outputdir:
-# maps/thumbnail/emerald/indar.png
-# maps/thumbnail/emerald/hossin.png
-# maps/thumbnail/emerald/esamir.png
-# maps/thumbnail/emerald/amerish.png
-# maps/thumbnail/emerald/oshur.png
-mapgen -s example -world emerald -outputdir maps/thumbnail -format thumbnail
+# This generates all of osprey's maps as thumbnails and places them in outputdir:
+# maps/thumbnail/osprey/indar.png
+# maps/thumbnail/osprey/hossin.png
+# maps/thumbnail/osprey/esamir.png
+# maps/thumbnail/osprey/amerish.png
+# maps/thumbnail/osprey/oshur.png
+mapgen -s example -world osprey -outputdir maps/thumbnail -format thumbnail
 ```
 
 The thumbnail renderer generates files that look something like this:
@@ -234,7 +234,7 @@ GET http://localhost:8080/facilities/{facility}.png
 e.g.:
 
 ```
-GET http://localhost:8080/emerald/indar.png
+GET http://localhost:8080/osprey/indar.png
 GET http://localhost:8080/genudine/indar.png
 GET http://localhost:8080/regions/2419.png
 GET http://localhost:8080/facilities/218.png

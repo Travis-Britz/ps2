@@ -368,7 +368,7 @@ func runMultiFileMode(ctx context.Context, dir string, renderFn renderingFn, wor
 		zones = []ps2.ContinentID{zone}
 	}
 
-	worlds := []ps2.WorldID{ps2.Connery, ps2.Miller, ps2.Emerald, ps2.Jaeger, ps2.SolTech, ps2.Genudine, ps2.Ceres}
+	worlds := []ps2.WorldID{ps2.Osprey, ps2.Wainwright, ps2.Jaeger, ps2.SolTech, ps2.Genudine, ps2.Ceres}
 	if world != 0 {
 		worlds = []ps2.WorldID{config.World}
 	}
@@ -968,14 +968,10 @@ func findRegion(r ps2.RegionID) (psmap.Map, psmap.Region, error) {
 func parseWorld(s string) ps2.WorldID {
 	s = strings.ToLower(s)
 	switch s {
-	case "connery":
-		return ps2.Connery
-	case "miller":
-		return ps2.Miller
-	case "cobalt":
-		return ps2.Cobalt
-	case "emerald":
-		return ps2.Emerald
+	case "osprey", "connery", "emerald":
+		return ps2.Osprey
+	case "wainwright", "miller", "cobalt":
+		return ps2.Wainwright
 	case "jaeger":
 		return ps2.Jaeger
 	case "apex":
@@ -1007,14 +1003,12 @@ func parseWorld(s string) ps2.WorldID {
 
 func worldName(w ps2.WorldID) string {
 	switch w {
-	case ps2.Connery:
-		return "connery"
-	case ps2.Miller:
-		return "miller"
+	case ps2.Osprey:
+		return "osprey"
+	case ps2.Wainwright:
+		return "wainwright"
 	case ps2.Cobalt:
 		return "cobalt"
-	case ps2.Emerald:
-		return "emerald"
 	case ps2.Jaeger:
 		return "jaeger"
 	case ps2.Apex:
