@@ -441,14 +441,10 @@ func (w WorldID) StringID() string { return strconv.Itoa(int(w)) }
 // Use StringID to get the ID number as a string.
 func (w WorldID) String() string {
 	switch w {
-	case Connery:
-		return "Connery"
-	case Miller:
-		return "Miller"
-	case Cobalt:
-		return "Cobalt"
-	case Emerald:
-		return "Emerald"
+	case Osprey:
+		return "Osprey"
+	case Wainwright:
+		return "Wainwright"
 	case Jaeger:
 		return "Jaeger"
 	case Apex:
@@ -480,14 +476,10 @@ func (w WorldID) String() string {
 
 func (w WorldID) GoString() string {
 	switch w {
-	case Connery:
-		return "ps2.Connery"
-	case Miller:
-		return "ps2.Miller"
-	case Cobalt:
-		return "ps2.Cobalt"
-	case Emerald:
-		return "ps2.Emerald"
+	case Osprey:
+		return "ps2.Osprey"
+	case Wainwright:
+		return "ps2.Wainwright"
 	case Jaeger:
 		return "ps2.Jaeger"
 	case Apex:
