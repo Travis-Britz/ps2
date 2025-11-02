@@ -712,7 +712,6 @@ func NewAllMapDataJSONReader(ctx context.Context, env ps2.Environment) io.ReadCl
 func NewRenderZoneReader(ctx context.Context, world ps2.WorldID, zone ps2.ContinentID, renderFn renderingFn) io.ReadCloser {
 	// this pipe is only used to pipe the error into a reader
 	r, w := io.Pipe()
-	defer w.Close()
 
 	renderErr := func(e error) io.ReadCloser {
 		w.CloseWithError(e)
