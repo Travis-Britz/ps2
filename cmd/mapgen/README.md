@@ -16,7 +16,7 @@ and may be compiled for any target operating system.
 Using [go install](https://go.dev/ref/mod#go-install):
 
 ```sh
-go install github.com/Travis-Britz/ps2/cmd/mapgen@v0.0.3
+go install github.com/Travis-Britz/ps2/cmd/mapgen@v0.0.4
 mapgen -h
 ```
 
